@@ -1,259 +1,740 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bible Memory Vault | v3 Stable</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;600;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #FDFBF7; color: #1e293b; margin: 0; }
-        .serif { font-family: 'Crimson Pro', serif; }
-        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #d97706; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Bible Memory Vault | Hide His Word in Your Heart</title>
+<meta name="description" content="An interactive Bible verse memorization app with 4 game modes, streaks, XP, and spaced repetition."/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Lato:wght@300;400;700&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Lato',sans-serif;background:#faf6ef;color:#1a1a2e;min-height:100vh}
+:root{
+  --cream:#faf6ef;--cream-dark:#f0e8d8;
+  --navy:#1a2744;--royal:#2d4a8a;
+  --gold:#c9a84c;--gold-light:#e8c96b;--gold-pale:#f7f0dd;
+  --text-dark:#1a1a2e;--text-med:#4a4a6a;--text-light:#8a8aaa
+}
+.vault-wrap{max-width:680px;margin:0 auto;padding:0 14px 60px}
+/* HEADER */
+.header{background:linear-gradient(135deg,#1a2744 0%,#2d4a8a 100%);padding:24px 24px 20px;text-align:center;border-radius:0 0 28px 28px;box-shadow:0 6px 28px rgba(26,39,68,.35);position:relative;overflow:hidden}
+.header::before{content:'';position:absolute;top:-50px;left:-50px;width:180px;height:180px;border:1px solid rgba(201,168,76,.18);border-radius:50%}
+.header::after{content:'';position:absolute;bottom:-70px;right:-40px;width:220px;height:220px;border:1px solid rgba(201,168,76,.12);border-radius:50%}
+.header-ornament{font-family:'Playfair Display',serif;font-size:13px;color:rgba(232,201,107,.6);letter-spacing:5px;position:relative;z-index:1;margin-bottom:4px}
+.header-title{font-family:'Playfair Display',serif;font-size:30px;font-weight:900;color:#fff;letter-spacing:2px;position:relative;z-index:1;line-height:1.15}
+.header-sub{font-size:11px;color:rgba(232,201,107,.75);letter-spacing:4px;text-transform:uppercase;margin-top:6px;position:relative;z-index:1}
+/* STATS */
+.stats-bar{display:flex;gap:8px;padding:14px 0 8px;justify-content:space-between}
+.stat-chip{flex:1;background:#fff;border:1px solid rgba(201,168,76,.3);border-radius:14px;padding:10px 6px;text-align:center;box-shadow:0 2px 10px rgba(26,39,68,.06)}
+.stat-icon{font-size:20px;line-height:1;margin-bottom:2px}
+.stat-val{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#1a2744;line-height:1.2}
+.stat-lbl{font-size:10px;color:#8a8aaa;letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+/* XP BAR */
+.xp-bar-wrap{background:#fff;border:1px solid rgba(201,168,76,.3);border-radius:14px;padding:14px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(26,39,68,.06)}
+.xp-rank{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.rank-name{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:#1a2744}
+.rank-next{font-size:11px;color:#8a8aaa}
+.xp-track{background:#f0e8d8;border-radius:99px;height:9px;overflow:hidden}
+.xp-fill{background:linear-gradient(90deg,#c9a84c,#e8c96b);height:100%;border-radius:99px;transition:width .7s ease}
+/* TABS */
+.tab-bar{display:flex;gap:4px;background:#f0e8d8;border-radius:14px;padding:4px;margin-bottom:16px}
+.tab-btn{flex:1;padding:9px;border:none;border-radius:11px;font-size:12px;font-family:'Lato',sans-serif;font-weight:700;letter-spacing:.5px;cursor:pointer;transition:all .2s;background:transparent;color:#8a8aaa}
+.tab-btn.active{background:#fff;color:#1a2744;box-shadow:0 2px 10px rgba(26,39,68,.1)}
+/* SECTION TITLE */
+.section-title{font-family:'Playfair Display',serif;font-size:19px;font-weight:700;color:#1a2744;margin:16px 0 10px;padding-left:12px;border-left:3px solid #c9a84c}
+/* CARD */
+.card{background:#fff;border:1px solid rgba(201,168,76,.25);border-radius:18px;padding:18px;margin-bottom:14px;box-shadow:0 2px 14px rgba(26,39,68,.07)}
+/* INPUTS */
+.input-row{display:flex;gap:8px;margin-bottom:10px}
+.vault-input{flex:1;background:#faf6ef;border:1.5px solid rgba(201,168,76,.4);border-radius:11px;padding:11px 14px;font-family:'Crimson Text',serif;font-size:16px;color:#1a2744;outline:none;transition:all .2s}
+.vault-input:focus{border-color:#c9a84c;box-shadow:0 0 0 3px rgba(201,168,76,.15)}
+/* BUTTONS */
+.btn-gold{background:linear-gradient(135deg,#c9a84c,#e8c96b);color:#1a2744;border:none;border-radius:11px;padding:11px 20px;font-family:'Lato',sans-serif;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:.5px;transition:all .25s;box-shadow:0 3px 10px rgba(201,168,76,.32)}
+.btn-gold:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(201,168,76,.45)}
+.btn-gold:active{transform:translateY(0)}
+.btn-gold:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-navy{background:#1a2744;color:#e8c96b;border:none;border-radius:11px;padding:11px 20px;font-family:'Lato',sans-serif;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:.5px;transition:all .2s;white-space:nowrap}
+.btn-navy:hover{background:#2d4a8a}
+.btn-navy:disabled{opacity:.5;cursor:not-allowed}
+.btn-outline{background:transparent;color:#2d4a8a;border:1.5px solid #2d4a8a;border-radius:11px;padding:9px 16px;font-family:'Lato',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .2s}
+.btn-outline:hover{background:#2d4a8a;color:#fff}
+.btn-sm{padding:7px 13px;font-size:12px;border-radius:9px}
+/* QUICK BTNS */
+.quick-btns{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
+.quick-btn{background:#f7f0dd;border:1px solid rgba(201,168,76,.4);border-radius:9px;padding:6px 12px;font-size:13px;font-family:'Crimson Text',serif;color:#1a2744;cursor:pointer;transition:all .2s}
+.quick-btn:hover{background:#f0e8d8;border-color:#c9a84c;transform:translateY(-1px)}
+/* VERSE DISPLAY */
+.verse-display-card{background:linear-gradient(135deg,#f7f0dd 0%,#faf6ef 100%);border:1.5px solid rgba(201,168,76,.4);border-radius:18px;padding:22px 20px;margin:10px 0 8px;position:relative}
+.verse-display-card::before{content:'\201C';font-family:'Playfair Display',serif;font-size:80px;color:rgba(201,168,76,.18);position:absolute;top:-10px;left:12px;line-height:1}
+.verse-text{font-family:'Crimson Text',serif;font-size:20px;line-height:1.8;color:#1a2744;font-style:italic;position:relative;z-index:1}
+.verse-ref{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:#c9a84c;margin-top:10px;text-align:right}
+/* MODE GRID */
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:10px}
+.mode-card{background:#fff;border:1.5px solid rgba(201,168,76,.22);border-radius:16px;padding:16px 14px;cursor:pointer;text-align:center;transition:all .28s;position:relative;overflow:hidden}
+.mode-card:hover{border-color:#c9a84c;transform:translateY(-3px);box-shadow:0 8px 24px rgba(26,39,68,.12)}
+.mode-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c9a84c,#e8c96b);opacity:0;transition:opacity .25s}
+.mode-card:hover::after{opacity:1}
+.mode-icon{font-size:28px;margin-bottom:8px}
+.mode-name{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:#1a2744}
+.mode-desc{font-size:11px;color:#8a8aaa;margin-top:4px;line-height:1.45}
+/* GAME */
+.game-wrap{padding:10px 0}
+.game-header{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.back-btn{background:transparent;border:1.5px solid rgba(26,39,68,.2);border-radius:9px;padding:7px 13px;font-size:12px;cursor:pointer;color:#4a4a6a;font-weight:700;transition:all .2s}
+.back-btn:hover{border-color:#2d4a8a;color:#2d4a8a}
+.game-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#1a2744;flex:1}
+.ref-badge{background:#f7f0dd;border:1px solid rgba(201,168,76,.4);border-radius:7px;padding:5px 10px;font-size:12px;font-family:'Crimson Text',serif;color:#c9a84c;font-weight:600}
+.game-instruction{font-size:13px;color:#8a8aaa;margin-bottom:16px;font-style:italic;line-height:1.6;padding:0 2px}
+/* ERASER */
+.eraser-verse{font-family:'Crimson Text',serif;font-size:18px;line-height:2.1;color:#1a2744;background:#faf6ef;border-radius:14px;padding:18px 16px;border:1px solid rgba(201,168,76,.2);min-height:90px}
+.word-visible{transition:all .3s}
+.word-hidden{background:#1a2744;color:#1a2744;border-radius:4px;padding:1px 3px;user-select:none;transition:all .3s}
+.progress-track{background:#f0e8d8;border-radius:99px;height:7px;margin:14px 0 5px;overflow:hidden}
+.progress-fill{background:linear-gradient(90deg,#2d4a8a,#c9a84c);height:100%;border-radius:99px;transition:width .45s ease}
+.progress-lbl{font-size:11px;color:#8a8aaa;text-align:right}
+.game-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+/* COMPLETE */
+.complete-box{text-align:center;padding:22px;background:linear-gradient(135deg,#f7f0dd,#fff);border:1.5px solid rgba(201,168,76,.4);border-radius:18px;margin-top:16px;animation:popIn .4s ease}
+@keyframes popIn{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+.complete-icon{font-size:48px;margin-bottom:10px}
+.complete-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#1a2744;margin-bottom:14px}
+/* SCRAMBLE */
+.answer-area{min-height:74px;background:#faf6ef;border:2px dashed rgba(201,168,76,.4);border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:7px;align-content:flex-start;transition:all .3s}
+.answer-area.shake{animation:shake .4s ease}
+.answer-area.glow{border-color:#2d9c5f;background:#f0fff8}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
+.placeholder-text{color:#c0c0d8;font-size:13px;font-style:italic;align-self:center;padding:4px}
+.word-pool{display:flex;flex-wrap:wrap;gap:7px;padding:4px 0}
+.word-chip{border-radius:9px;padding:8px 12px;font-family:'Crimson Text',serif;font-size:16px;cursor:pointer;transition:all .2s;border:none;font-weight:600}
+.word-chip.unsel{background:#fff;border:1.5px solid rgba(45,74,138,.28);color:#1a2744}
+.word-chip.unsel:hover{border-color:#c9a84c;background:#f7f0dd;transform:translateY(-1px)}
+.word-chip.sel{background:#1a2744;color:#e8c96b;border:1.5px solid #1a2744}
+/* FIRST LETTER */
+.fl-display{font-family:'Crimson Text',serif;font-size:22px;line-height:2.2;background:#faf6ef;border-radius:14px;padding:18px 16px;border:1px solid rgba(201,168,76,.2);letter-spacing:2px}
+.fl-token{display:inline;font-weight:700;color:#2d4a8a;font-size:26px}
+/* RECALL */
+.recall-preview{min-height:48px;background:#faf6ef;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-family:'Crimson Text',serif;font-size:17px;line-height:1.9;border:1px solid rgba(201,168,76,.2)}
+.recall-correct{color:#27ae60;font-weight:600}
+.recall-wrong{color:#c0392b;font-weight:600;text-decoration:line-through}
+.recall-extra{color:#e67e22}
+.recall-input{width:100%;background:#faf6ef;border:1.5px solid rgba(201,168,76,.4);border-radius:14px;padding:14px;font-family:'Crimson Text',serif;font-size:17px;color:#1a2744;resize:vertical;outline:none;line-height:1.8;transition:all .2s}
+.recall-input:focus{border-color:#c9a84c;box-shadow:0 0 0 3px rgba(201,168,76,.15)}
+.score-circle{width:108px;height:108px;border-radius:50%;border:4px solid #c9a84c;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:4px auto 18px;background:#f7f0dd}
+.score-num{font-family:'Playfair Display',serif;font-size:30px;font-weight:900;color:#1a2744;line-height:1}
+.score-lbl{font-size:10px;color:#8a8aaa;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+.result-area{font-family:'Crimson Text',serif;font-size:17px;line-height:2;background:#faf6ef;border-radius:14px;padding:14px;border:1px solid rgba(201,168,76,.2)}
+.r-correct{color:#27ae60}
+.r-wrong{color:#c0392b}
+.r-missing{color:#e67e22}
+.r-corr-text{text-decoration:line-through;opacity:.7}
+.r-fix{font-size:13px;color:#27ae60;margin-left:3px}
+/* VAULT LIST */
+.vault-list{display:flex;flex-direction:column;gap:9px;margin-top:10px}
+.vault-item{background:#fff;border:1px solid rgba(201,168,76,.25);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .2s}
+.vault-item:hover{border-color:rgba(201,168,76,.5);box-shadow:0 3px 12px rgba(26,39,68,.08)}
+.vault-item-ref{font-family:'Playfair Display',serif;font-size:13px;font-weight:700;color:#c9a84c;white-space:nowrap;min-width:90px}
+.vault-item-text{font-family:'Crimson Text',serif;font-size:14px;color:#4a4a6a;flex:1;line-height:1.5}
+.vault-del{background:none;border:none;color:#d0d0e0;cursor:pointer;font-size:18px;padding:4px;transition:color .2s;flex-shrink:0}
+.vault-del:hover{color:#c0392b}
+.empty-vault{text-align:center;padding:32px 20px;color:#b0b0c8;font-style:italic;font-size:15px;line-height:1.7}
+/* MANNA MODAL */
+.manna-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(26,39,68,.72);display:flex;align-items:center;justify-content:center;z-index:1000;animation:fadeIn .3s ease;padding:20px}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.manna-card{background:#fff;border-radius:26px;padding:36px 30px;max-width:360px;width:100%;text-align:center;border:2px solid rgba(201,168,76,.45);box-shadow:0 24px 70px rgba(26,39,68,.35);animation:slideUp .4s ease}
+@keyframes slideUp{from{transform:translateY(28px);opacity:0}to{transform:translateY(0);opacity:1}}
+.manna-icon{font-size:52px;margin-bottom:6px}
+.manna-badge{display:inline-block;background:#f7f0dd;border:1px solid rgba(201,168,76,.5);border-radius:99px;padding:5px 16px;font-size:11px;color:#c9a84c;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px}
+.manna-title{font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#1a2744;margin-bottom:12px}
+.manna-quote{font-family:'Crimson Text',serif;font-size:17px;font-style:italic;color:#4a4a6a;line-height:1.7;margin-bottom:8px}
+.manna-ref{font-family:'Playfair Display',serif;font-size:13px;font-weight:700;color:#c9a84c;margin-bottom:20px}
+/* MISC */
+.loading-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(201,168,76,.3);border-top-color:#c9a84c;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error-msg{background:#fff5f5;border:1px solid rgba(192,57,43,.3);border-radius:11px;padding:11px 14px;font-size:13px;color:#c0392b;margin-top:10px;line-height:1.5}
+.manual-area{margin-top:12px}
+.hint-text{font-size:12px;color:#8a8aaa;margin-bottom:8px;font-style:italic}
+/* RESPONSIVE */
+@media(max-width:420px){
+  .header-title{font-size:24px}
+  .mode-grid{grid-template-columns:1fr 1fr}
+  .mode-card{padding:13px 10px}
+  .mode-name{font-size:13px}
+}
+</style>
 </head>
 <body>
-    <div id="root"></div>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-        const { motion, AnimatePresence } = window.Motion;
+/* ─── CONSTANTS ───────────────────────────────────── */
+const ESV_KEY='dd6d6d32c68659c64d43d4d3a983e048217aa224';
+const QUICK=[
+  {ref:'Philippians 4:13',text:'I can do all things through him who strengthens me.'},
+  {ref:'John 3:16',text:'For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.'},
+  {ref:'Psalm 23:1',text:'The LORD is my shepherd; I shall not want.'}
+];
+const RANKS=[
+  {name:'Seeker',icon:'🔍',min:0,max:50},
+  {name:'Scribe',icon:'✍️',min:50,max:150},
+  {name:'Herald',icon:'📯',min:150,max:300},
+  {name:'Watchman',icon:'🗼',min:300,max:500},
+  {name:'Prophet',icon:'🔥',min:500,max:800},
+  {name:'Apostle',icon:'⚡',min:800,max:Infinity}
+];
+const MANNA_Q=[
+  {quote:'Your word is a lamp to my feet and a light to my path.',ref:'Psalm 119:105'},
+  {quote:'I have stored up your word in my heart, that I might not sin against you.',ref:'Psalm 119:11'},
+  {quote:'Let the word of Christ dwell in you richly.',ref:'Colossians 3:16'},
+  {quote:'Man shall not live by bread alone, but by every word from the mouth of God.',ref:'Matthew 4:4'}
+];
 
-        const API_KEY = 'dd6d6d32c68659c64d43d4d3a983e048217aa224';
+/* ─── HELPERS ─────────────────────────────────────── */
+function getRank(xp){return RANKS.find(r=>xp>=r.min&&xp<r.max)||RANKS[RANKS.length-1]}
+function getXpPct(xp){const r=getRank(xp);if(r.max===Infinity)return 100;return Math.round(((xp-r.min)/(r.max-r.min))*100)}
+function getNextRank(xp){const i=RANKS.findIndex(r=>xp>=r.min&&xp<r.max);return i<RANKS.length-1?RANKS[i+1]:null}
+function clean(w){return w.toLowerCase().replace(/[^a-z]/g,'')}
+function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function lsGet(k){try{const v=localStorage.getItem('bmv_'+k);return v?JSON.parse(v):null;}catch{return null;}}
+function lsSet(k,v){try{localStorage.setItem('bmv_'+k,JSON.stringify(v));}catch{}}
 
-        // Reusable Icon component that won't break on re-renders
-        const Icon = ({ name, className = "" }) => {
-            const iconRef = useRef(null);
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            });
-            return <i data-lucide={name} className={className} style={{width: '1em', height: '1em'}}></i>;
-        };
+/* ─── ERASER GAME ─────────────────────────────────── */
+function EraserGame({verse,verseRef,onComplete,onBack}){
+  const words=verse.trim().split(/\s+/);
+  const [hidden,setHidden]=useState([]);
+  const [done,setDone]=useState(false);
 
-        const App = () => {
-            const [verse, setVerse] = useState("I can do all things through him who strengthens me.");
-            const [reference, setReference] = useState("Philippians 4:13");
-            const [xp, setXp] = useState(0);
-            const [vault, setVault] = useState([]);
-            const [activeMode, setActiveMode] = useState('menu');
-            const [loading, setLoading] = useState(false);
-            const [inputValue, setInputValue] = useState("");
+  function erase(){
+    const avail=words.map((_,i)=>i).filter(i=>!hidden.includes(i));
+    if(!avail.length){setDone(true);return;}
+    const pick=avail[Math.floor(Math.random()*avail.length)];
+    const next=[...hidden,pick];
+    setHidden(next);
+    if(next.length>=words.length)setDone(true);
+  }
+  function reset(){setHidden([]);setDone(false);}
+  const pct=words.length?Math.round((hidden.length/words.length)*100):0;
 
-            // Game States
-            const [eraseLevel, setEraseLevel] = useState(0);
-            const [scrambleProgress, setScrambleProgress] = useState([]);
-            const [scrambledWords, setScrambledWords] = useState([]);
-            const [recallInput, setRecallInput] = useState('');
+  return(
+    <div className="game-wrap">
+      <div className="game-header">
+        <button className="back-btn" onClick={onBack}>← Back</button>
+        <span className="game-title">The Eraser</span>
+        <span className="ref-badge">{verseRef}</span>
+      </div>
+      <p className="game-instruction">Read the verse aloud. Each click erases one word. Recite the full verse as it disappears!</p>
+      <div className="eraser-verse">
+        {words.map((w,i)=>(
+          <span key={i}>
+            <span className={hidden.includes(i)?'word-hidden':'word-visible'}>
+              {hidden.includes(i)?'▓'.repeat(Math.max(2,clean(w).length)):w}
+            </span>{' '}
+          </span>
+        ))}
+      </div>
+      <div className="progress-track">
+        <div className="progress-fill" style={{width:pct+'%'}}/>
+      </div>
+      <div className="progress-lbl">{hidden.length}/{words.length} words hidden ({pct}%)</div>
+      {done
+        ?<div className="complete-box">
+          <div className="complete-icon">🎉</div>
+          <div className="complete-title">You recited it from memory!</div>
+          <div className="game-actions" style={{justifyContent:'center'}}>
+            <button className="btn-gold" onClick={onComplete}>Claim +10 XP ✦</button>
+            <button className="btn-outline" onClick={reset}>Try Again</button>
+          </div>
+        </div>
+        :<div className="game-actions">
+          <button className="btn-gold" onClick={erase}>Erase a Word ✕</button>
+          <button className="btn-outline" onClick={reset}>Reset</button>
+        </div>
+      }
+    </div>
+  );
+}
 
-            // Persistence
-            useEffect(() => {
-                const saved = localStorage.getItem('bm_vault_v3');
-                if (saved) {
-                    try {
-                        const parsed = JSON.parse(saved);
-                        setXp(parsed.xp || 0);
-                        setVault(parsed.vault || []);
-                    } catch(e) { console.error("Save data corrupt"); }
-                }
-            }, []);
+/* ─── SCRAMBLE GAME ───────────────────────────────── */
+function ScrambleGame({verse,verseRef,onComplete,onBack}){
+  const orig=verse.trim().split(/\s+/);
+  const [pool,setPool]=useState(()=>shuffle(orig.map((w,i)=>({w,id:i}))));
+  const [sel,setSel]=useState([]);
+  const [st,setSt]=useState('playing');
 
-            useEffect(() => {
-                localStorage.setItem('bm_vault_v3', JSON.stringify({ xp, vault }));
-            }, [xp, vault]);
+  function tap(item,fromSel){
+    if(st==='correct')return;
+    if(fromSel){setSel(p=>p.filter(s=>s.id!==item.id));return;}
+    const next=[...sel,item];
+    setSel(next);
+    if(next.length===orig.length){
+      const ok=next.map(s=>s.w).join(' ')===orig.join(' ');
+      setSt(ok?'correct':'wrong');
+      if(!ok)setTimeout(()=>{setSel([]);setSt('playing');},700);
+    }
+  }
+  function reset(){
+    setPool(shuffle(orig.map((w,i)=>({w,id:i}))));
+    setSel([]);setSt('playing');
+  }
+  const remaining=pool.filter(p=>!sel.find(s=>s.id===p.id));
 
-            const handleFetch = async () => {
-                if (!inputValue) return;
-                setLoading(true);
-                try {
-                    const url = `https://api.esv.org/v3/passage/text/?q=${encodeURIComponent(inputValue)}&include-headings=false&include-footnotes=false&include-verse-numbers=false&include-short-copyright=false&include-passage-references=false`;
-                    const res = await fetch(url, { headers: { 'Authorization': `Token ${API_KEY}` } });
-                    const data = await res.json();
-                    
-                    if (data && data.passages && data.passages.length > 0) {
-                        const cleanText = data.passages[0].trim().replace(/\s+/g, ' ');
-                        setVerse(cleanText);
-                        setReference(inputValue);
-                        setInputValue("");
-                        setActiveMode('menu');
-                    } else {
-                        alert("Could not find that verse. Please try 'John 3:16'.");
-                    }
-                } catch (err) {
-                    alert("Network error. Check your connection.");
-                } finally {
-                    setLoading(false);
-                }
-            };
+  return(
+    <div className="game-wrap">
+      <div className="game-header">
+        <button className="back-btn" onClick={onBack}>← Back</button>
+        <span className="game-title">Scrambled Stones</span>
+        <span className="ref-badge">{verseRef}</span>
+      </div>
+      <p className="game-instruction">Tap the word blocks in the correct order to rebuild the verse. Tap a selected word to remove it.</p>
+      <div className={`answer-area${st==='wrong'?' shake':st==='correct'?' glow':''}`}>
+        {sel.length===0
+          ?<span className="placeholder-text">Tap words below to place them here...</span>
+          :sel.map(item=>(
+            <button key={item.id} className="word-chip sel" onClick={()=>tap(item,true)}>{item.w}</button>
+          ))
+        }
+      </div>
+      {st!=='correct'&&(
+        <div className="word-pool">
+          {remaining.map(item=>(
+            <button key={item.id} className="word-chip unsel" onClick={()=>tap(item,false)}>{item.w}</button>
+          ))}
+        </div>
+      )}
+      {st==='correct'
+        ?<div className="complete-box">
+          <div className="complete-icon">✅</div>
+          <div className="complete-title">Perfect order! Well done!</div>
+          <div className="game-actions" style={{justifyContent:'center'}}>
+            <button className="btn-gold" onClick={onComplete}>Claim +10 XP ✦</button>
+            <button className="btn-outline" onClick={reset}>Play Again</button>
+          </div>
+        </div>
+        :<div style={{marginTop:12}}>
+          <button className="btn-outline btn-sm" onClick={reset}>🔀 Reshuffle Words</button>
+        </div>
+      }
+    </div>
+  );
+}
 
-            const awardXp = (pts) => setXp(p => p + pts);
+/* ─── FIRST LETTER GAME ───────────────────────────── */
+function FirstLetterGame({verse,verseRef,onComplete,onBack}){
+  const words=verse.trim().split(/\s+/);
+  const [revealed,setRevealed]=useState(false);
+  const [done,setDone]=useState(false);
 
-            return (
-                <div className="min-h-screen flex flex-col max-w-xl mx-auto border-x border-slate-100 bg-white">
-                    <header className="p-4 bg-slate-900 text-white flex justify-between items-center sticky top-0 z-10">
-                        <div className="flex items-center gap-2 font-bold">
-                            <Icon name="book-open" className="text-yellow-500" />
-                            <span>Vault</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                             <div className="text-orange-400 font-bold flex items-center gap-1 text-sm">
-                                <Icon name="flame" /> 1
-                            </div>
-                            <div className="bg-slate-800 px-3 py-1 rounded text-yellow-500 font-mono text-xs border border-slate-700">
-                                {xp} XP
-                            </div>
-                        </div>
-                    </header>
+  return(
+    <div className="game-wrap">
+      <div className="game-header">
+        <button className="back-btn" onClick={onBack}>← Back</button>
+        <span className="game-title">First Letter Blitz</span>
+        <span className="ref-badge">{verseRef}</span>
+      </div>
+      <p className="game-instruction">Only the first letter of each word is shown. Speak the full verse from memory — including punctuation and rhythm!</p>
+      <div className="fl-display">
+        {words.map((word,i)=>{
+          const letters=word.replace(/[^a-zA-Z]/g,'');
+          const first=letters[0]||word[0];
+          const punct=word.slice(-1).match(/[.,!?;:]/)?word.slice(-1):'';
+          return(
+            <span key={i}>
+              {revealed
+                ?<span>{word} </span>
+                :<span className="fl-token">{first}{punct} </span>
+              }
+            </span>
+          );
+        })}
+      </div>
+      {!done
+        ?<div className="game-actions" style={{marginTop:16}}>
+          <button className="btn-outline" onClick={()=>setRevealed(r=>!r)}>
+            {revealed?'🙈 Hide Verse':'👁 Peek at Verse'}
+          </button>
+          {!revealed&&(
+            <button className="btn-gold" onClick={()=>setDone(true)}>I Recited It! ✓</button>
+          )}
+        </div>
+        :<div className="complete-box">
+          <div className="complete-icon">🌟</div>
+          <div className="complete-title">Scripture memorized! Glory!</div>
+          <div className="game-actions" style={{justifyContent:'center'}}>
+            <button className="btn-gold" onClick={onComplete}>Claim +10 XP ✦</button>
+            <button className="btn-outline" onClick={()=>{setDone(false);setRevealed(false);}}>Try Again</button>
+          </div>
+        </div>
+      }
+    </div>
+  );
+}
 
-                    <main className="p-4 flex-1">
-                        <AnimatePresence mode="wait">
-                            {activeMode === 'menu' ? (
-                                <motion.div key="menu" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="space-y-6">
-                                    <div className="bg-[#FAF9F6] p-6 rounded-2xl border border-yellow-100 shadow-sm relative">
-                                        <p className="text-xl serif italic text-slate-800 leading-relaxed">"{verse}"</p>
-                                        <p className="text-yellow-800 font-bold text-xs mt-3 uppercase tracking-widest">— {reference}</p>
-                                    </div>
+/* ─── RECALL GAME ─────────────────────────────────── */
+function RecallGame({verse,verseRef,onComplete,onBack}){
+  const [input,setInput]=useState('');
+  const [checked,setChecked]=useState(false);
+  const orig=verse.trim().split(/\s+/);
+  const typed=input.trim().split(/\s+/).filter(Boolean);
+  const results=orig.map((w,i)=>{
+    if(!typed[i])return{w,status:'missing'};
+    return{w,typed:typed[i],status:clean(typed[i])===clean(w)?'correct':'wrong'};
+  });
+  const correctCount=results.filter(r=>r.status==='correct').length;
+  const score=orig.length?Math.round((correctCount/orig.length)*100):0;
 
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <GameCard icon="eraser" title="Eraser" color="blue" onClick={() => {setActiveMode('eraser'); setEraseLevel(0);}} />
-                                        <GameCard icon="shuffle" title="Scramble" color="purple" onClick={() => {
-                                            setActiveMode('scramble');
-                                            const words = verse.split(' ').map((w, i) => ({ id: i, text: w }));
-                                            setScrambledWords([...words].sort(() => Math.random() - 0.5));
-                                            setScrambleProgress([]);
-                                        }} />
-                                        <GameCard icon="zap" title="Blitz" color="yellow" onClick={() => setActiveMode('blitz')} />
-                                        <GameCard icon="keyboard" title="Recall" color="green" onClick={() => {setActiveMode('recall'); setRecallInput('');}} />
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                        <input 
-                                            value={inputValue}
-                                            onChange={(e) => setInputValue(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
-                                            className="flex-1 p-3 rounded-xl border border-slate-200 outline-none focus:border-yellow-500 text-sm" 
-                                            placeholder="Enter verse (e.g. John 3:16)" 
-                                        />
-                                        <button onClick={handleFetch} className="bg-slate-900 text-white w-12 h-12 rounded-xl flex items-center justify-center">
-                                            {loading ? <div className="loader"></div> : <Icon name="search"/>}
-                                        </button>
-                                    </div>
-
-                                    {vault.length > 0 && (
-                                        <div>
-                                            <h3 className="text-[10px] font-bold text-slate-400 tracking-widest mb-3">YOUR VAULT</h3>
-                                            <div className="space-y-2">
-                                                {vault.map((v, i) => (
-                                                    <div key={i} onClick={() => {setVerse(v.text); setReference(v.ref);}} className="p-3 bg-white border rounded-lg flex justify-between items-center cursor-pointer hover:border-yellow-400">
-                                                        <span className="font-bold text-xs">{v.ref}</span>
-                                                        <Icon name="play" className="text-slate-300" />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <button 
-                                        onClick={() => {
-                                            if(!vault.find(v => v.ref === reference)) setVault([{ref: reference, text: verse}, ...vault]);
-                                        }}
-                                        className="w-full py-3 border-2 border-dashed border-slate-200 text-slate-400 text-xs font-bold rounded-xl"
-                                    >
-                                        + SAVE CURRENT VERSE
-                                    </button>
-                                </motion.div>
-                            ) : (
-                                <motion.div key="game" initial={{y:10, opacity:0}} animate={{y:0, opacity:1}} exit={{y:10, opacity:0}} className="bg-white rounded-2xl min-h-[400px] flex flex-col">
-                                    <div className="flex justify-between items-center mb-6">
-                                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{activeMode} Mode</span>
-                                        <button onClick={() => setActiveMode('menu')} className="text-slate-300 hover:text-slate-900"><Icon name="x-circle" /></button>
-                                    </div>
-
-                                    <div className="flex-1 flex flex-col justify-center px-2">
-                                        {activeMode === 'eraser' && (
-                                            <div className="text-center">
-                                                <div className="text-xl serif leading-relaxed mb-10">
-                                                    {verse.split(' ').map((w, i) => (
-                                                        <span key={i} className={`mx-0.5 transition-all duration-500 ${(i * 7) % 10 < eraseLevel ? 'opacity-0 blur-sm' : ''}`}>{w} </span>
-                                                    ))}
-                                                </div>
-                                                <button onClick={() => eraseLevel < 10 ? setEraseLevel(l => l + 2) : awardXp(10)} className="bg-slate-900 text-white px-8 py-3 rounded-full font-bold text-sm">
-                                                    {eraseLevel < 10 ? "Erase More" : "Mastered! +10 XP"}
-                                                </button>
-                                            </div>
-                                        )}
-
-                                        {activeMode === 'scramble' && (
-                                            <div>
-                                                <div className="p-4 bg-slate-50 rounded-xl border-2 border-dashed mb-6 flex flex-wrap gap-2 min-h-[80px]">
-                                                    {scrambleProgress.map((w, i) => <span key={i} className="bg-white px-2 py-1 rounded shadow-sm border text-xs">{w.text}</span>)}
-                                                </div>
-                                                <div className="flex flex-wrap justify-center gap-2">
-                                                    {scrambledWords.map(w => (
-                                                        <button key={w.id} onClick={() => {
-                                                            setScrambleProgress([...scrambleProgress, w]);
-                                                            setScrambledWords(scrambledWords.filter(x => x.id !== w.id));
-                                                            if(scrambledWords.length === 1) awardXp(15);
-                                                        }} className="bg-white px-3 py-2 rounded-lg border border-slate-200 text-xs shadow-sm">
-                                                            {w.text}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {activeMode === 'blitz' && (
-                                            <div className="text-center">
-                                                <div className="text-3xl font-bold tracking-[0.25em] text-slate-300 mb-10 break-all px-4">
-                                                    {verse.split(' ').map((w, i) => <span key={i} className="mx-1 border-b-2 border-slate-100">{w[0]}</span>)}
-                                                </div>
-                                                <button onClick={() => awardXp(10)} className="bg-yellow-500 text-white px-8 py-3 rounded-full font-bold text-sm">Recited It!</button>
-                                            </div>
-                                        )}
-
-                                        {activeMode === 'recall' && (
-                                            <div className="space-y-4">
-                                                <textarea 
-                                                    className="w-full h-32 p-4 rounded-xl border border-slate-200 serif text-lg outline-none focus:border-green-500"
-                                                    placeholder="Type verse..."
-                                                    value={recallInput}
-                                                    onChange={(e) => {
-                                                        setRecallInput(e.target.value);
-                                                        if(e.target.value.trim().toLowerCase() === verse.trim().toLowerCase()) awardXp(20);
-                                                    }}
-                                                />
-                                                <div className="flex flex-wrap gap-1 text-[10px] leading-tight">
-                                                    {recallInput.split(' ').map((w, i) => {
-                                                        const target = verse.split(' ')[i];
-                                                        const ok = target && w.toLowerCase().replace(/[^\w]/g, '') === target.toLowerCase().replace(/[^\w]/g, '');
-                                                        return <span key={i} className={ok ? "text-green-500" : "text-red-400 font-bold"}>{w} </span>;
-                                                    })}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </main>
-                </header>
-            );
-        };
-
-        const GameCard = ({ icon, title, color, onClick }) => (
-            <button onClick={onClick} className="p-4 bg-white border border-slate-100 rounded-2xl flex flex-col items-center gap-2 hover:bg-slate-50 shadow-sm transition">
-                <div className={`p-2 rounded-lg bg-${color}-50 text-${color}-600`}><Icon name={icon}/></div>
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{title}</span>
+  return(
+    <div className="game-wrap">
+      <div className="game-header">
+        <button className="back-btn" onClick={onBack}>← Back</button>
+        <span className="game-title">Active Recall Quiz</span>
+        <span className="ref-badge">{verseRef}</span>
+      </div>
+      <p className="game-instruction">Type the verse from memory. Words highlight green (correct) or red (wrong) as you type. Score 70%+ to claim XP.</p>
+      {!checked
+        ?<>
+          {input.trim()&&(
+            <div className="recall-preview">
+              {typed.map((w,i)=>{
+                const o=orig[i];
+                if(!o)return<span key={i} className="recall-extra">{w} </span>;
+                return<span key={i} className={clean(w)===clean(o)?'recall-correct':'recall-wrong'}>{w} </span>;
+              })}
+            </div>
+          )}
+          <textarea
+            className="recall-input"
+            rows={4}
+            value={input}
+            onChange={e=>setInput(e.target.value)}
+            placeholder="Begin typing the verse from memory..."
+          />
+          <div className="game-actions" style={{marginTop:14}}>
+            <button className="btn-gold" disabled={!input.trim()} onClick={()=>setChecked(true)}>
+              Check Answer →
             </button>
-        );
+            <button className="btn-outline" onClick={()=>setInput('')}>Clear</button>
+          </div>
+        </>
+        :<>
+          <div className="score-circle">
+            <span className="score-num">{score}%</span>
+            <span className="score-lbl">Accuracy</span>
+          </div>
+          <div className="result-area">
+            {results.map((r,i)=>(
+              <span key={i}>
+                {r.status==='correct'&&<span className="r-correct">{r.w} </span>}
+                {r.status==='wrong'&&<span className="r-wrong">
+                  <span className="r-corr-text">{r.typed}</span>
+                  <span className="r-fix">({r.w})</span>{' '}
+                </span>}
+                {r.status==='missing'&&<span className="r-missing">[{r.w}] </span>}
+              </span>
+            ))}
+          </div>
+          {score===100
+            ?<div className="complete-box">
+              <div className="complete-icon">🏆</div>
+              <div className="complete-title">Perfect recall! To God be the glory!</div>
+              <div className="game-actions" style={{justifyContent:'center'}}>
+                <button className="btn-gold" onClick={onComplete}>Claim +10 XP ✦</button>
+              </div>
+            </div>
+            :<div className="game-actions" style={{marginTop:14}}>
+              <button className="btn-outline" onClick={()=>{setInput('');setChecked(false);}}>Try Again</button>
+              {score>=70&&(
+                <button className="btn-gold" onClick={onComplete}>Accept Score & Claim XP</button>
+              )}
+            </div>
+          }
+        </>
+      }
+    </div>
+  );
+}
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+/* ─── MANNA MODAL ─────────────────────────────────── */
+function MannaModal({onClose}){
+  const q=MANNA_Q[Math.floor(Math.random()*MANNA_Q.length)];
+  return(
+    <div className="manna-overlay" onClick={onClose}>
+      <div className="manna-card" onClick={e=>e.stopPropagation()}>
+        <div className="manna-icon">✨</div>
+        <div className="manna-badge">Daily Manna</div>
+        <div className="manna-title">Faithful & Blessed!</div>
+        <p className="manna-quote">"{q.quote}"</p>
+        <div className="manna-ref">— {q.ref}</div>
+        <button className="btn-gold" style={{width:'100%'}} onClick={onClose}>
+          Receive Your Manna 🍞
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── MAIN APP ────────────────────────────────────── */
+function App(){
+  const [tab,setTab]=useState('lab');
+  const [verseRef,setVerseRef]=useState('');
+  const [verseText,setVerseText]=useState('');
+  const [manualText,setManualText]=useState('');
+  const [showManual,setShowManual]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const [apiErr,setApiErr]=useState('');
+  const [gameMode,setGameMode]=useState(null);
+  const [xp,setXp]=useState(()=>lsGet('xp')||0);
+  const [streak,setStreak]=useState(()=>lsGet('streak')||0);
+  const [vault,setVault]=useState(()=>lsGet('vault')||[]);
+  const [showManna,setShowManna]=useState(false);
+  const [lastPlay,setLastPlay]=useState(()=>lsGet('lastPlay')||'');
+
+  useEffect(()=>lsSet('xp',xp),[xp]);
+  useEffect(()=>lsSet('streak',streak),[streak]);
+  useEffect(()=>lsSet('vault',vault),[vault]);
+  useEffect(()=>lsSet('lastPlay',lastPlay),[lastPlay]);
+
+  const rank=getRank(xp);
+  const nextRank=getNextRank(xp);
+  const xpPct=getXpPct(xp);
+  const today=new Date().toDateString();
+  const activeVerse=(showManual&&manualText)?manualText:verseText;
+
+  async function fetchVerse(ref){
+    if(!ref.trim())return;
+    setLoading(true);setApiErr('');
+    try{
+      const url=`https://api.esv.org/v3/passage/text/?q=${encodeURIComponent(ref)}&include-passage-references=false&include-verse-numbers=false&include-footnotes=false&include-headings=false&include-selahs=false&indent-poetry=false&indent-paragraphs=false`;
+      const r=await fetch(url,{headers:{'Authorization':`Token ${ESV_KEY}`}});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      const t=d.passages?.[0]?.trim();
+      if(!t||t.length<3)throw new Error('Not found');
+      setVerseText(t);setShowManual(false);setApiErr('');
+    }catch(e){
+      setApiErr('ESV API blocked by browser CORS. Type the verse below, or use the Quick Load buttons.');
+      setShowManual(true);
+    }
+    setLoading(false);
+  }
+
+  function quickLoad(q){
+    setVerseRef(q.ref);setVerseText(q.text);
+    setShowManual(false);setManualText('');setApiErr('');
+  }
+
+  function handleGameComplete(){
+    setXp(p=>p+10);
+    if(lastPlay!==today){
+      setStreak(p=>p+1);
+      setLastPlay(today);
+      setShowManna(true);
+    }
+    setGameMode(null);
+  }
+
+  function saveToVault(){
+    if(!activeVerse||vault.find(v=>v.ref===verseRef))return;
+    setVault(p=>[{ref:verseRef,text:activeVerse},...p]);
+  }
+
+  function loadFromVault(item){
+    setVerseRef(item.ref);setVerseText(item.text);
+    setShowManual(false);setManualText('');setApiErr('');
+    setTab('lab');
+  }
+
+  /* ── GAME SCREEN ── */
+  if(gameMode){
+    const gp={verse:activeVerse,verseRef,onComplete:handleGameComplete,onBack:()=>setGameMode(null)};
+    return(
+      <div className="vault-wrap">
+        {showManna&&<MannaModal onClose={()=>setShowManna(false)}/>}
+        <div className="header">
+          <div className="header-ornament">✦ ✦ ✦</div>
+          <div className="header-title">Bible Memory Vault</div>
+          <div className="header-sub">Memory Lab — {verseRef}</div>
+        </div>
+        <div style={{padding:'10px 0'}}>
+          {gameMode==='eraser'&&<EraserGame {...gp}/>}
+          {gameMode==='scramble'&&<ScrambleGame {...gp}/>}
+          {gameMode==='firstletter'&&<FirstLetterGame {...gp}/>}
+          {gameMode==='recall'&&<RecallGame {...gp}/>}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── HOME SCREEN ── */
+  return(
+    <div className="vault-wrap">
+      {showManna&&<MannaModal onClose={()=>setShowManna(false)}/>}
+
+      <div className="header">
+        <div className="header-ornament">✦ ✦ ✦</div>
+        <div className="header-title">Bible Memory Vault</div>
+        <div className="header-sub">Hide His Word in Your Heart</div>
+      </div>
+
+      {/* STATS */}
+      <div className="stats-bar">
+        <div className="stat-chip">
+          <div className="stat-icon">🔥</div>
+          <div className="stat-val">{streak}</div>
+          <div className="stat-lbl">Streak</div>
+        </div>
+        <div className="stat-chip">
+          <div className="stat-icon">{rank.icon}</div>
+          <div className="stat-val">{rank.name}</div>
+          <div className="stat-lbl">Rank</div>
+        </div>
+        <div className="stat-chip">
+          <div className="stat-icon">⚡</div>
+          <div className="stat-val">{xp}</div>
+          <div className="stat-lbl">XP</div>
+        </div>
+        <div className="stat-chip">
+          <div className="stat-icon">📜</div>
+          <div className="stat-val">{vault.length}</div>
+          <div className="stat-lbl">Vault</div>
+        </div>
+      </div>
+
+      {/* XP BAR */}
+      <div className="xp-bar-wrap">
+        <div className="xp-rank">
+          <span className="rank-name">{rank.icon} {rank.name}</span>
+          <span className="rank-next">
+            {nextRank?`Next: ${nextRank.icon} ${nextRank.name} at ${nextRank.min} XP`:'✦ Maximum Rank Achieved'}
+          </span>
+        </div>
+        <div className="xp-track">
+          <div className="xp-fill" style={{width:xpPct+'%'}}/>
+        </div>
+      </div>
+
+      {/* TABS */}
+      <div className="tab-bar">
+        <button className={`tab-btn${tab==='lab'?' active':''}`} onClick={()=>setTab('lab')}>
+          📖 Memory Lab
+        </button>
+        <button className={`tab-btn${tab==='vault'?' active':''}`} onClick={()=>setTab('vault')}>
+          🏛 My Vault ({vault.length})
+        </button>
+      </div>
+
+      {/* LAB TAB */}
+      {tab==='lab'&&<>
+        <div className="card">
+          <div className="section-title">Load a Verse</div>
+          <div className="input-row">
+            <input
+              className="vault-input"
+              placeholder="e.g. Romans 8:28"
+              value={verseRef}
+              onChange={e=>setVerseRef(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&fetchVerse(verseRef)}
+            />
+            <button className="btn-navy" onClick={()=>fetchVerse(verseRef)} disabled={loading||!verseRef.trim()}>
+              {loading?<><span className="loading-spinner"/>Loading</>:'Search →'}
+            </button>
+          </div>
+          <div className="hint-text">Quick Load a famous verse:</div>
+          <div className="quick-btns">
+            {QUICK.map(q=>(
+              <button key={q.ref} className="quick-btn" onClick={()=>quickLoad(q)}>{q.ref}</button>
+            ))}
+          </div>
+          {apiErr&&(
+            <div className="error-msg">⚠ {apiErr}</div>
+          )}
+          {showManual&&(
+            <div className="manual-area">
+              <div className="hint-text" style={{marginTop:8}}>Enter verse text manually:</div>
+              <textarea
+                className="recall-input"
+                rows={3}
+                placeholder="Type or paste the verse text here..."
+                value={manualText}
+                onChange={e=>setManualText(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+
+        {activeVerse&&<>
+          <div className="verse-display-card">
+            <div className="verse-text">{activeVerse}</div>
+            <div className="verse-ref">— {verseRef}</div>
+          </div>
+
+          <div style={{display:'flex',gap:9,marginBottom:14,flexWrap:'wrap'}}>
+            <button
+              className="btn-outline btn-sm"
+              onClick={saveToVault}
+              disabled={vault.some(v=>v.ref===verseRef)}
+            >
+              {vault.some(v=>v.ref===verseRef)?'✓ Saved to Vault':'📌 Save to Vault'}
+            </button>
+          </div>
+
+          <div className="section-title">Choose a Game Mode</div>
+          <div className="mode-grid">
+            {[
+              {id:'eraser',icon:'🧹',name:'The Eraser',desc:'Words vanish one by one — keep reciting!'},
+              {id:'scramble',icon:'🧩',name:'Scrambled Stones',desc:'Rebuild the verse from shuffled blocks'},
+              {id:'firstletter',icon:'⚡',name:'First Letter Blitz',desc:'Only first letters shown — speak it all!'},
+              {id:'recall',icon:'✍️',name:'Active Recall Quiz',desc:'Type the verse; errors highlighted live'}
+            ].map(m=>(
+              <div key={m.id} className="mode-card" onClick={()=>setGameMode(m.id)}>
+                <div className="mode-icon">{m.icon}</div>
+                <div className="mode-name">{m.name}</div>
+                <div className="mode-desc">{m.desc}</div>
+              </div>
+            ))}
+          </div>
+        </>}
+
+        {!activeVerse&&(
+          <div style={{textAlign:'center',padding:'36px 20px',color:'#b0b0c8',fontStyle:'italic',fontSize:15,lineHeight:1.8}}>
+            ✦ Load a verse above to begin<br/>your memory journey ✦
+          </div>
+        )}
+      </>}
+
+      {/* VAULT TAB */}
+      {tab==='vault'&&<>
+        <div className="section-title">Review Vault</div>
+        {vault.length===0
+          ?<div className="empty-vault">
+            Your vault is empty.<br/>
+            Save verses from the Memory Lab to<br/>build your spaced repetition queue.
+          </div>
+          :<div className="vault-list">
+            {vault.map(item=>(
+              <div key={item.ref} className="vault-item">
+                <div style={{flex:1}} onClick={()=>loadFromVault(item)}>
+                  <div className="vault-item-ref">{item.ref}</div>
+                  <div className="vault-item-text">
+                    {item.text.length>90?item.text.slice(0,90)+'…':item.text}
+                  </div>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:5,flexShrink:0}}>
+                  <button className="btn-outline btn-sm" onClick={()=>loadFromVault(item)}>Practice</button>
+                  <button className="vault-del" onClick={()=>setVault(p=>p.filter(v=>v.ref!==item.ref))}>✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        }
+      </>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
 </body>
 </html>
