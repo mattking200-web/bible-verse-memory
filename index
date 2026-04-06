@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bible Memory Vault</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #FDFBF7; }
+        .serif { font-family: 'Crimson Pro', serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { motion, AnimatePresence } = window.Motion;
+
+        // --- Configuration ---
+        const API_KEY = 'dd6d6d32c68659c64d43d4d3a983e048217aa224';
+        const RANKS = [
+            { name: 'Scribe', minXp: 0 },
+            { name: 'Herald', minXp: 50 },
+            { name: 'Watchman', minXp: 150 },
+            { name: 'Disciple', minXp: 300 }
+        ];
+
+        const QUICK_VERSES = [
+            { ref: 'Philippians 4:13', text: 'I can do all things through him who strengthens me.' },
+            { ref: 'John 11:35', text: 'Jesus wept.' },
+            { ref: 'Psalm 23:1', text: 'The Lord is my shepherd; I shall not want.' }
+        ];
+
+        // --- Icon Component Helper ---
+        const Icon = ({ name, size = 18, className = "" }) => {
+            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
+        };
+
+        const App = () => {
+            const [verse, setVerse] = useState(QUICK_VERSES[0].text);
+            const [reference, setReference] = useState(QUICK_VERSES[0].ref);
+            const [loading, setLoading] = useState(false);
+            const [activeMode, setActiveMode] = useState('menu');
+            const [xp, setXp] = useState(0);
+            const [streak, setStreak] = useState(1);
+            
+            // Game Logic States
+            const [eraseLevel, setEraseLevel] = useState(0);
+            const [scrambleProgress, setScrambleProgress] = useState([]);
+            const [scrambledWords, setScrambledWords] = useState([]);
+            const [recallInput, setRecallInput] = useState('');
+
+            useEffect(() => {
+                lucide.createIcons();
+            }, [activeMode, loading]);
+
+            const fetchVerse = async (query) => {
+                if (!query) return;
+                setLoading(true);
+                try {
+                    const response = await fetch(`https://api.esv.org/v3/passage/text/?q=${encodeURIComponent(query)}&include-headings=false&include-footnotes=false&include-verse-numbers=false&include-short-copyright=false`, {
+                        headers: { 'Authorization': `Token ${API_KEY}` }
+                    });
+                    const data = await response.json();
+                    if (data.passages?.length > 0) {
+                        setVerse(data.passages[0].trim());
+                        setReference(query);
+                        setActiveMode('menu');
+                    }
+                } catch (err) {
+                    alert("Connection error. Check your API key or reference.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const startMode = (mode) => {
+                setActiveMode(mode);
+                if (mode === 'scramble') {
+                    const words = verse.split(' ').map((w, i) => ({ id: i, text: w }));
+                    setScrambledWords([...words].sort(() => Math.random() - 0.5));
+                    setScrambleProgress([]);
+                }
+                if (mode === 'eraser') setEraseLevel(0);
+                if (mode === 'recall') setRecallInput('');
+            };
+
+            const awardXp = (pts) => {
+                setXp(prev => prev + pts);
+                alert(`Manna Received! +${pts} XP`);
+            };
+
+            const currentRank = RANKS.reduce((prev, curr) => (xp >= curr.minXp ? curr : prev));
+
+            return (
+                <div className="min-h-screen">
+                    {/* Navigation */}
+                    <nav className="flex justify-between items-center p-6 bg-[#0F172A] text-white border-b border-yellow-600/30 shadow-lg">
+                        <div className="flex items-center gap-2">
+                            <Icon name="book-marked" className="text-yellow-500" />
+                            <h1 className="text-xl font-bold tracking-tight">Bible Vault</h1>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-1 text-orange-400 font-bold">
+                                <Icon name="flame" /> <span>{streak}</span>
+                            </div>
+                            <div className="bg-slate-800 px-4 py-1 rounded-full border border-slate-700">
+                                <span className="text-xs uppercase text-slate-400 mr-2 tracking-widest">{currentRank.name}</span>
+                                <span className="text-yellow-500 font-mono">{xp} XP</span>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-4xl mx-auto p-6">
+                        <AnimatePresence mode="wait">
+                            {activeMode === 'menu' ? (
+                                <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="space-y-6">
+                                    <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+                                        <h2 className="text-slate-400 uppercase text-xs font-bold tracking-widest mb-4">Daily Meditation</h2>
+                                        <p className="text-3xl serif italic text-slate-700 mb-2 leading-tight">"{verse}"</p>
+                                        <p className="text-yellow-700 font-bold">— {reference}</p>
+                                        
+                                        <div className="flex flex-wrap gap-2 mt-6">
+                                            {QUICK_VERSES.map(v => (
+                                                <button key={v.ref} onClick={() => {setVerse(v.text); setReference(v.ref);}} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded-full">
+                                                    {v.ref}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <button onClick={() => startMode('eraser')} className="flex items-center gap-4 p-6 bg-white rounded-2xl border border-slate-100 hover:border-yellow-300 transition text-left shadow-sm">
+                                            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Icon name="eraser"/></div>
+                                            <div><h3 className="font-bold">The Eraser</h3><p className="text-sm text-slate-500">Words vanish as you learn.</p></div>
+                                        </button>
+                                        <button onClick={() => startMode('scramble')} className="flex items-center gap-4 p-6 bg-white rounded-2xl border border-slate-100 hover:border-yellow-300 transition text-left shadow-sm">
+                                            <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><Icon name="layout-grid"/></div>
+                                            <div><h3 className="font-bold">Scrambled Stones</h3><p className="text-sm text-slate-500">Rebuild the foundation.</p></div>
+                                        </button>
+                                        <button onClick={() => startMode('blitz')} className="flex items-center gap-4 p-6 bg-white rounded-2xl border border-slate-100 hover:border-yellow-300 transition text-left shadow-sm">
+                                            <div className="p-3 bg-yellow-50 text-yellow-600 rounded-xl"><Icon name="zap"/></div>
+                                            <div><h3 className="font-bold">First Letter Blitz</h3><p className="text-sm text-slate-500">Initials only recall.</p></div>
+                                        </button>
+                                        <button onClick={() => startMode('recall')} className="flex items-center gap-4 p-6 bg-white rounded-2xl border border-slate-100 hover:border-yellow-300 transition text-left shadow-sm">
+                                            <div className="p-3 bg-green-50 text-green-600 rounded-xl"><Icon name="type"/></div>
+                                            <div><h3 className="font-bold">Active Recall</h3><p className="text-sm text-slate-500">Perfect typing test.</p></div>
+                                        </button>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <input id="refInput" className="flex-1 p-4 rounded-xl border border-slate-200" placeholder="Enter Scripture (e.g. John 3:16)" />
+                                        <button onClick={() => fetchVerse(document.getElementById('refInput').value)} className="bg-slate-900 text-white px-8 rounded-xl hover:bg-black transition">
+                                            {loading ? "..." : "Load Verse"}
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            ) : (
+                                <motion.div initial={{y:20, opacity:0}} animate={{y:0, opacity:1}} className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h2 className="text-xl font-bold uppercase tracking-widest text-slate-400">{activeMode}</h2>
+                                        <button onClick={() => setActiveMode('menu')} className="text-slate-400 hover:text-red-500"><Icon name="x-circle" size={24}/></button>
+                                    </div>
+
+                                    {activeMode === 'eraser' && (
+                                        <div className="text-center">
+                                            <div className="text-3xl serif leading-relaxed mb-12">
+                                                {verse.split(' ').map((w, i) => (
+                                                    <span key={i} className={`mx-1 transition-all duration-500 ${(i * 7) % 10 < eraseLevel ? 'opacity-0 scale-90 blur-sm' : ''}`}>{w} </span>
+                                                ))}
+                                            </div>
+                                            <button onClick={() => eraseLevel < 10 ? setEraseLevel(l => l + 2) : awardXp(10)} className="bg-blue-600 text-white px-10 py-4 rounded-full font-bold shadow-lg">
+                                                {eraseLevel < 10 ? "Increase Difficulty" : "Victory! +10 XP"}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {activeMode === 'scramble' && (
+                                        <div>
+                                            <div className="min-h-[120px] p-6 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex flex-wrap gap-2 mb-8">
+                                                {scrambleProgress.map((w, i) => <span key={i} className="bg-white px-3 py-1 rounded-lg border shadow-sm text-xl">{w.text}</span>)}
+                                            </div>
+                                            <div className="flex flex-wrap justify-center gap-2">
+                                                {scrambledWords.map(w => (
+                                                    <button key={w.id} onClick={() => {
+                                                        setScrambleProgress([...scrambleProgress, w]);
+                                                        setScrambledWords(scrambledWords.filter(x => x.id !== w.id));
+                                                        if(scrambledWords.length === 1) awardXp(10);
+                                                    }} className="bg-white hover:bg-yellow-50 px-4 py-2 rounded-xl border border-slate-300 text-xl shadow-sm">
+                                                        {w.text}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeMode === 'blitz' && (
+                                        <div className="text-center">
+                                            <div className="text-4xl serif tracking-[0.3em] mb-12 text-slate-600">
+                                                {verse.split(' ').map((w, i) => <span key={i} className="mx-3 border-b-2 border-slate-200">{w[0]}</span>)}
+                                            </div>
+                                            <button onClick={() => awardXp(10)} className="bg-yellow-600 text-white px-10 py-4 rounded-full font-bold shadow-lg">Recited from Memory</button>
+                                        </div>
+                                    )}
+
+                                    {activeMode === 'recall' && (
+                                        <div>
+                                            <textarea 
+                                                className="w-full h-40 p-6 rounded-2xl border-2 border-slate-200 text-2xl serif"
+                                                placeholder="Begin typing the verse..."
+                                                onChange={(e) => {
+                                                    setRecallInput(e.target.value);
+                                                    if(e.target.value.trim().toLowerCase() === verse.trim().toLowerCase()) awardXp(20);
+                                                }}
+                                            />
+                                            <div className="mt-4 flex flex-wrap gap-1">
+                                                {recallInput.split(' ').map((w, i) => {
+                                                    const target = verse.split(' ')[i];
+                                                    const ok = target && w.toLowerCase().replace(/[^\w]/g, '') === target.toLowerCase().replace(/[^\w]/g, '');
+                                                    return <span key={i} className={ok ? "text-green-600" : "text-red-500"}>{w} </span>;
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
