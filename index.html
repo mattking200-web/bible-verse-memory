@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bible Memory Vault | Fixed</title>
+    <title>Bible Memory Vault | v3 Stable</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,9 +12,9 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;600;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #FDFBF7; color: #1e293b; }
+        body { font-family: 'Inter', sans-serif; background-color: #FDFBF7; color: #1e293b; margin: 0; }
         .serif { font-family: 'Crimson Pro', serif; }
-        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #d97706; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #d97706; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
@@ -22,13 +22,18 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
         const { motion, AnimatePresence } = window.Motion;
 
         const API_KEY = 'dd6d6d32c68659c64d43d4d3a983e048217aa224';
 
-        const Icon = ({ name, size = 18, className = "" }) => {
-            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
+        // Reusable Icon component that won't break on re-renders
+        const Icon = ({ name, className = "" }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            });
+            return <i data-lucide={name} className={className} style={{width: '1em', height: '1em'}}></i>;
         };
 
         const App = () => {
@@ -38,6 +43,7 @@
             const [vault, setVault] = useState([]);
             const [activeMode, setActiveMode] = useState('menu');
             const [loading, setLoading] = useState(false);
+            const [inputValue, setInputValue] = useState("");
 
             // Game States
             const [eraseLevel, setEraseLevel] = useState(0);
@@ -45,117 +51,107 @@
             const [scrambledWords, setScrambledWords] = useState([]);
             const [recallInput, setRecallInput] = useState('');
 
-            // Load Data
+            // Persistence
             useEffect(() => {
-                const saved = localStorage.getItem('bible_vault_final');
+                const saved = localStorage.getItem('bm_vault_v3');
                 if (saved) {
-                    const parsed = JSON.parse(saved);
-                    setXp(parsed.xp || 0);
-                    setVault(parsed.vault || []);
+                    try {
+                        const parsed = JSON.parse(saved);
+                        setXp(parsed.xp || 0);
+                        setVault(parsed.vault || []);
+                    } catch(e) { console.error("Save data corrupt"); }
                 }
-                lucide.createIcons();
             }, []);
 
-            // Save Data & Refresh Icons
             useEffect(() => {
-                localStorage.setItem('bible_vault_final', JSON.stringify({ xp, vault }));
-                lucide.createIcons();
-            }, [xp, vault, activeMode, loading]);
+                localStorage.setItem('bm_vault_v3', JSON.stringify({ xp, vault }));
+            }, [xp, vault]);
 
-            const fetchVerse = async () => {
-                const query = document.getElementById('vInput').value;
-                if (!query) return;
-                
+            const handleFetch = async () => {
+                if (!inputValue) return;
                 setLoading(true);
                 try {
-                    const res = await fetch(`https://api.esv.org/v3/passage/text/?q=${encodeURIComponent(query)}&include-headings=false&include-footnotes=false&include-verse-numbers=false&include-short-copyright=false`, {
-                        headers: { 'Authorization': `Token ${API_KEY}` }
-                    });
+                    const url = `https://api.esv.org/v3/passage/text/?q=${encodeURIComponent(inputValue)}&include-headings=false&include-footnotes=false&include-verse-numbers=false&include-short-copyright=false&include-passage-references=false`;
+                    const res = await fetch(url, { headers: { 'Authorization': `Token ${API_KEY}` } });
                     const data = await res.json();
                     
                     if (data && data.passages && data.passages.length > 0) {
-                        setVerse(data.passages[0].trim());
-                        setReference(query);
+                        const cleanText = data.passages[0].trim().replace(/\s+/g, ' ');
+                        setVerse(cleanText);
+                        setReference(inputValue);
+                        setInputValue("");
                         setActiveMode('menu');
-                        document.getElementById('vInput').value = ""; // Clear input
                     } else {
-                        alert("Verse not found. Try 'John 3:16' format.");
+                        alert("Could not find that verse. Please try 'John 3:16'.");
                     }
                 } catch (err) {
-                    console.error(err);
                     alert("Network error. Check your connection.");
                 } finally {
                     setLoading(false);
                 }
             };
 
-            const awardXp = (pts) => { setXp(prev => prev + pts); };
+            const awardXp = (pts) => setXp(p => p + pts);
 
             return (
-                <div className="min-h-screen flex flex-col">
-                    <nav className="p-5 bg-slate-900 text-white flex justify-between items-center shadow-md">
-                        <div className="flex items-center gap-2">
-                            <Icon name="book" className="text-yellow-500" />
-                            <span className="font-bold tracking-tight">Bible Memory Vault</span>
+                <div className="min-h-screen flex flex-col max-w-xl mx-auto border-x border-slate-100 bg-white">
+                    <header className="p-4 bg-slate-900 text-white flex justify-between items-center sticky top-0 z-10">
+                        <div className="flex items-center gap-2 font-bold">
+                            <Icon name="book-open" className="text-yellow-500" />
+                            <span>Vault</span>
                         </div>
-                        <div className="bg-slate-800 px-3 py-1 rounded text-yellow-500 font-mono text-sm border border-slate-700">
-                            {xp} XP
+                        <div className="flex items-center gap-3">
+                             <div className="text-orange-400 font-bold flex items-center gap-1 text-sm">
+                                <Icon name="flame" /> 1
+                            </div>
+                            <div className="bg-slate-800 px-3 py-1 rounded text-yellow-500 font-mono text-xs border border-slate-700">
+                                {xp} XP
+                            </div>
                         </div>
-                    </nav>
+                    </header>
 
-                    <main className="max-w-2xl mx-auto w-full p-4 flex-1">
+                    <main className="p-4 flex-1">
                         <AnimatePresence mode="wait">
                             {activeMode === 'menu' ? (
                                 <motion.div key="menu" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="space-y-6">
-                                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-                                        <p className="text-2xl serif italic mb-2">"{verse}"</p>
-                                        <p className="text-yellow-700 font-bold text-sm">— {reference}</p>
+                                    <div className="bg-[#FAF9F6] p-6 rounded-2xl border border-yellow-100 shadow-sm relative">
+                                        <p className="text-xl serif italic text-slate-800 leading-relaxed">"{verse}"</p>
+                                        <p className="text-yellow-800 font-bold text-xs mt-3 uppercase tracking-widest">— {reference}</p>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={() => {setActiveMode('eraser'); setEraseLevel(0);}} className="p-4 bg-white border rounded-xl flex flex-col items-center gap-2 hover:bg-slate-50 transition">
-                                            <Icon name="eraser" className="text-blue-500"/>
-                                            <span className="text-xs font-bold text-slate-500 uppercase">Eraser</span>
-                                        </button>
-                                        <button onClick={() => {
+                                        <GameCard icon="eraser" title="Eraser" color="blue" onClick={() => {setActiveMode('eraser'); setEraseLevel(0);}} />
+                                        <GameCard icon="shuffle" title="Scramble" color="purple" onClick={() => {
                                             setActiveMode('scramble');
                                             const words = verse.split(' ').map((w, i) => ({ id: i, text: w }));
                                             setScrambledWords([...words].sort(() => Math.random() - 0.5));
                                             setScrambleProgress([]);
-                                        }} className="p-4 bg-white border rounded-xl flex flex-col items-center gap-2 hover:bg-slate-50 transition">
-                                            <Icon name="layout-grid" className="text-purple-500"/>
-                                            <span className="text-xs font-bold text-slate-500 uppercase">Scramble</span>
-                                        </button>
-                                        <button onClick={() => setActiveMode('blitz')} className="p-4 bg-white border rounded-xl flex flex-col items-center gap-2 hover:bg-slate-50 transition">
-                                            <Icon name="zap" className="text-yellow-500"/>
-                                            <span className="text-xs font-bold text-slate-500 uppercase">Blitz</span>
-                                        </button>
-                                        <button onClick={() => {setActiveMode('recall'); setRecallInput('');}} className="p-4 bg-white border rounded-xl flex flex-col items-center gap-2 hover:bg-slate-50 transition">
-                                            <Icon name="type" className="text-green-500"/>
-                                            <span className="text-xs font-bold text-slate-500 uppercase">Recall</span>
-                                        </button>
+                                        }} />
+                                        <GameCard icon="zap" title="Blitz" color="yellow" onClick={() => setActiveMode('blitz')} />
+                                        <GameCard icon="keyboard" title="Recall" color="green" onClick={() => {setActiveMode('recall'); setRecallInput('');}} />
                                     </div>
 
                                     <div className="flex gap-2">
                                         <input 
-                                            id="vInput" 
-                                            className="flex-1 p-4 rounded-xl border border-slate-300 outline-none focus:ring-2 ring-yellow-500/50" 
-                                            placeholder="Enter verse (e.g. Genesis 1:1)" 
-                                            onKeyDown={(e) => e.key === 'Enter' && fetchVerse()}
+                                            value={inputValue}
+                                            onChange={(e) => setInputValue(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
+                                            className="flex-1 p-3 rounded-xl border border-slate-200 outline-none focus:border-yellow-500 text-sm" 
+                                            placeholder="Enter verse (e.g. John 3:16)" 
                                         />
-                                        <button onClick={fetchVerse} className="bg-slate-900 text-white px-6 rounded-xl flex items-center justify-center min-w-[60px]">
+                                        <button onClick={handleFetch} className="bg-slate-900 text-white w-12 h-12 rounded-xl flex items-center justify-center">
                                             {loading ? <div className="loader"></div> : <Icon name="search"/>}
                                         </button>
                                     </div>
 
                                     {vault.length > 0 && (
-                                        <div className="pt-4">
-                                            <h3 className="text-[10px] font-black text-slate-400 tracking-[0.2em] mb-4">YOUR VAULT</h3>
-                                            <div className="grid gap-2">
+                                        <div>
+                                            <h3 className="text-[10px] font-bold text-slate-400 tracking-widest mb-3">YOUR VAULT</h3>
+                                            <div className="space-y-2">
                                                 {vault.map((v, i) => (
-                                                    <div key={i} onClick={() => {setVerse(v.text); setReference(v.ref);}} className="bg-white p-3 rounded-lg border border-slate-100 flex justify-between cursor-pointer hover:border-yellow-500">
-                                                        <span className="font-bold text-sm text-slate-700">{v.ref}</span>
-                                                        <Icon name="chevron-right" className="text-slate-300"/>
+                                                    <div key={i} onClick={() => {setVerse(v.text); setReference(v.ref);}} className="p-3 bg-white border rounded-lg flex justify-between items-center cursor-pointer hover:border-yellow-400">
+                                                        <span className="font-bold text-xs">{v.ref}</span>
+                                                        <Icon name="play" className="text-slate-300" />
                                                     </div>
                                                 ))}
                                             </div>
@@ -166,28 +162,28 @@
                                         onClick={() => {
                                             if(!vault.find(v => v.ref === reference)) setVault([{ref: reference, text: verse}, ...vault]);
                                         }}
-                                        className="w-full py-3 border-2 border-dashed border-slate-200 text-slate-400 font-bold rounded-xl hover:bg-slate-50 transition mt-4"
+                                        className="w-full py-3 border-2 border-dashed border-slate-200 text-slate-400 text-xs font-bold rounded-xl"
                                     >
                                         + SAVE CURRENT VERSE
                                     </button>
                                 </motion.div>
                             ) : (
-                                <motion.div key="game" initial={{scale:0.95, opacity:0}} animate={{scale:1, opacity:1}} exit={{scale:0.95, opacity:0}} className="bg-white p-6 rounded-2xl shadow-xl min-h-[400px] flex flex-col">
-                                    <div className="flex justify-between items-center mb-8">
-                                        <span className="font-black text-slate-300 uppercase">{activeMode}</span>
-                                        <button onClick={() => setActiveMode('menu')} className="text-slate-400"><Icon name="x" size={24}/></button>
+                                <motion.div key="game" initial={{y:10, opacity:0}} animate={{y:0, opacity:1}} exit={{y:10, opacity:0}} className="bg-white rounded-2xl min-h-[400px] flex flex-col">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{activeMode} Mode</span>
+                                        <button onClick={() => setActiveMode('menu')} className="text-slate-300 hover:text-slate-900"><Icon name="x-circle" /></button>
                                     </div>
 
-                                    <div className="flex-1 flex flex-col justify-center">
+                                    <div className="flex-1 flex flex-col justify-center px-2">
                                         {activeMode === 'eraser' && (
                                             <div className="text-center">
-                                                <div className="text-2xl serif leading-relaxed mb-10">
+                                                <div className="text-xl serif leading-relaxed mb-10">
                                                     {verse.split(' ').map((w, i) => (
-                                                        <span key={i} className={`mx-1 transition-all duration-700 ${(i * 7) % 10 < eraseLevel ? 'opacity-0 blur-sm' : ''}`}>{w} </span>
+                                                        <span key={i} className={`mx-0.5 transition-all duration-500 ${(i * 7) % 10 < eraseLevel ? 'opacity-0 blur-sm' : ''}`}>{w} </span>
                                                     ))}
                                                 </div>
-                                                <button onClick={() => eraseLevel < 10 ? setEraseLevel(l => l + 2) : awardXp(10)} className="bg-blue-600 text-white px-8 py-3 rounded-full font-bold">
-                                                    {eraseLevel < 10 ? "Erase Words" : "Mastered! +10 XP"}
+                                                <button onClick={() => eraseLevel < 10 ? setEraseLevel(l => l + 2) : awardXp(10)} className="bg-slate-900 text-white px-8 py-3 rounded-full font-bold text-sm">
+                                                    {eraseLevel < 10 ? "Erase More" : "Mastered! +10 XP"}
                                                 </button>
                                             </div>
                                         )}
@@ -195,7 +191,7 @@
                                         {activeMode === 'scramble' && (
                                             <div>
                                                 <div className="p-4 bg-slate-50 rounded-xl border-2 border-dashed mb-6 flex flex-wrap gap-2 min-h-[80px]">
-                                                    {scrambleProgress.map((w, i) => <span key={i} className="bg-white px-2 py-1 rounded shadow-sm border text-sm">{w.text}</span>)}
+                                                    {scrambleProgress.map((w, i) => <span key={i} className="bg-white px-2 py-1 rounded shadow-sm border text-xs">{w.text}</span>)}
                                                 </div>
                                                 <div className="flex flex-wrap justify-center gap-2">
                                                     {scrambledWords.map(w => (
@@ -203,7 +199,7 @@
                                                             setScrambleProgress([...scrambleProgress, w]);
                                                             setScrambledWords(scrambledWords.filter(x => x.id !== w.id));
                                                             if(scrambledWords.length === 1) awardXp(15);
-                                                        }} className="bg-white px-3 py-2 rounded-lg border border-slate-300 text-sm shadow-sm active:scale-95">
+                                                        }} className="bg-white px-3 py-2 rounded-lg border border-slate-200 text-xs shadow-sm">
                                                             {w.text}
                                                         </button>
                                                     ))}
@@ -213,24 +209,25 @@
 
                                         {activeMode === 'blitz' && (
                                             <div className="text-center">
-                                                <div className="text-3xl font-bold tracking-[0.3em] text-slate-400 mb-10">
-                                                    {verse.split(' ').map((w, i) => <span key={i} className="mx-2 border-b-2 border-slate-200">{w[0]}</span>)}
+                                                <div className="text-3xl font-bold tracking-[0.25em] text-slate-300 mb-10 break-all px-4">
+                                                    {verse.split(' ').map((w, i) => <span key={i} className="mx-1 border-b-2 border-slate-100">{w[0]}</span>)}
                                                 </div>
-                                                <button onClick={() => awardXp(10)} className="bg-yellow-500 text-white px-8 py-3 rounded-full font-bold">I Recited It!</button>
+                                                <button onClick={() => awardXp(10)} className="bg-yellow-500 text-white px-8 py-3 rounded-full font-bold text-sm">Recited It!</button>
                                             </div>
                                         )}
 
                                         {activeMode === 'recall' && (
-                                            <div>
+                                            <div className="space-y-4">
                                                 <textarea 
-                                                    className="w-full h-32 p-4 rounded-xl border border-slate-200 serif text-xl outline-none focus:border-green-500"
-                                                    placeholder="Type verse exactly..."
+                                                    className="w-full h-32 p-4 rounded-xl border border-slate-200 serif text-lg outline-none focus:border-green-500"
+                                                    placeholder="Type verse..."
+                                                    value={recallInput}
                                                     onChange={(e) => {
                                                         setRecallInput(e.target.value);
                                                         if(e.target.value.trim().toLowerCase() === verse.trim().toLowerCase()) awardXp(20);
                                                     }}
                                                 />
-                                                <div className="mt-4 flex flex-wrap gap-1 text-xs">
+                                                <div className="flex flex-wrap gap-1 text-[10px] leading-tight">
                                                     {recallInput.split(' ').map((w, i) => {
                                                         const target = verse.split(' ')[i];
                                                         const ok = target && w.toLowerCase().replace(/[^\w]/g, '') === target.toLowerCase().replace(/[^\w]/g, '');
@@ -244,9 +241,16 @@
                             )}
                         </AnimatePresence>
                     </main>
-                </div>
+                </header>
             );
         };
+
+        const GameCard = ({ icon, title, color, onClick }) => (
+            <button onClick={onClick} className="p-4 bg-white border border-slate-100 rounded-2xl flex flex-col items-center gap-2 hover:bg-slate-50 shadow-sm transition">
+                <div className={`p-2 rounded-lg bg-${color}-50 text-${color}-600`}><Icon name={icon}/></div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{title}</span>
+            </button>
+        );
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
