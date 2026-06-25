@@ -140,6 +140,20 @@ body{font-family:'Lato',sans-serif;background:#faf6ef;color:#1a1a2e;min-height:1
 .vault-del{background:none;border:none;color:#d0d0e0;cursor:pointer;font-size:18px;padding:4px;transition:color .2s;flex-shrink:0}
 .vault-del:hover{color:#c0392b}
 .empty-vault{text-align:center;padding:32px 20px;color:#b0b0c8;font-style:italic;font-size:15px;line-height:1.7}
+/* SPACED REPETITION */
+.due-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;background:linear-gradient(135deg,#f7f0dd,#fff);border:1.5px solid rgba(201,168,76,.45);border-radius:14px;padding:13px 16px;margin-bottom:12px}
+.due-banner.all-caught{background:#f3fbf6;border-color:rgba(45,156,95,.3)}
+.due-banner-text{font-family:'Crimson Text',serif;font-size:14px;color:#1a2744}
+.due-banner-count{font-family:'Playfair Display',serif;font-weight:900;color:#c9a84c}
+.due-chip{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border-radius:6px;padding:3px 8px;white-space:nowrap;flex-shrink:0}
+.due-chip.now{background:#fdeceb;color:#c0392b}
+.due-chip.soon{background:#fff6e0;color:#a9791f}
+.due-chip.later{background:#eef3fb;color:#5b7bab}
+.vault-item-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.mastery-dots{display:flex;gap:3px;margin-top:6px}
+.mastery-dot{width:5px;height:5px;border-radius:50%;background:#e7e0cc}
+.mastery-dot.filled{background:#c9a84c}
+.chunk-note{display:inline-block;background:#eef3fb;border:1px solid rgba(91,123,171,.3);border-radius:8px;padding:5px 10px;font-size:11px;color:#5b7bab;margin-bottom:10px;font-style:italic}
 /* MANNA MODAL */
 .manna-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(26,39,68,.72);display:flex;align-items:center;justify-content:center;z-index:1000;animation:fadeIn .3s ease;padding:20px}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -201,22 +215,96 @@ function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Mat
 function lsGet(k){try{const v=localStorage.getItem('bmv_'+k);return v?JSON.parse(v):null;}catch{return null;}}
 function lsSet(k,v){try{localStorage.setItem('bmv_'+k,JSON.stringify(v));}catch{}}
 
+/* ─── PHRASE CHUNKING ──────────────────────────────
+   Long passages are hard to drill word-by-word, so verses
+   over CHUNK_THRESHOLD words are broken into ~3-6 word
+   phrases at natural boundaries (punctuation, conjunctions)
+   instead of single words. Short verses stay word-level for
+   the most granular practice. */
+const CHUNK_THRESHOLD=12;
+const CONJ=new Set(['and','but','for','yet','or','so','nor','that','which','who','when','because','while','if','as']);
+function chunkVerse(text,maxWords=6,minWords=3){
+  const words=text.trim().split(/\s+/);
+  if(words.length<=maxWords)return[text.trim()];
+  const STRONG=/[,;:.!?—–]$/;
+  const chunks=[];
+  let cur=[];
+  for(let i=0;i<words.length;i++){
+    cur.push(words[i]);
+    const isLast=i===words.length-1;
+    if(isLast){chunks.push(cur.join(' '));cur=[];continue;}
+    const endsStrong=STRONG.test(words[i]);
+    const atMax=cur.length>=maxWords;
+    const nextWord=words[i+1].toLowerCase().replace(/[^a-z]/g,'');
+    const nextIsConj=CONJ.has(nextWord);
+    if((endsStrong&&cur.length>=minWords)||atMax||(nextIsConj&&cur.length>=minWords)){
+      chunks.push(cur.join(' '));cur=[];
+    }
+  }
+  if(cur.length)chunks.push(cur.join(' '));
+  if(chunks.length>1&&chunks[chunks.length-1].split(/\s+/).length<minWords){
+    const last=chunks.pop();
+    chunks[chunks.length-1]+=' '+last;
+  }
+  return chunks;
+}
+function tokensFor(verse){
+  const wordCount=verse.trim().split(/\s+/).length;
+  return wordCount>CHUNK_THRESHOLD?chunkVerse(verse):verse.trim().split(/\s+/);
+}
+function blankFor(token){
+  const wc=token.trim().split(/\s+/).length;
+  return Array.from({length:wc},()=>'▓▓▓').join(' ');
+}
+
+/* ─── SPACED REPETITION (simplified SM-2) ──────────
+   Each vault verse tracks interval/repetitions/easeFactor.
+   On review, quality (0-5) drives the next interval:
+   q<3 resets to 1 day (struggled); q>=3 grows the interval
+   1 → 6 → interval*easeFactor, same as classic SM-2. */
+function todayISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function addDays(dateStr,days){const [y,m,d]=dateStr.split('-').map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+days);return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`}
+function daysBetween(dateStr){const [y,m,d]=dateStr.split('-').map(Number);const target=new Date(y,m-1,d);const now=new Date();const mid=new Date(now.getFullYear(),now.getMonth(),now.getDate());return Math.round((target-mid)/86400000)}
+function freshVaultItem(ref,text){return{ref,text,interval:1,repetitions:0,easeFactor:2.5,nextReviewDate:todayISO(),lastReviewed:null,addedDate:todayISO()}}
+function scheduleReview(item,quality){
+  let{interval=1,repetitions=0,easeFactor=2.5}=item;
+  if(quality<3){
+    repetitions=0;interval=1;
+  }else{
+    repetitions+=1;
+    if(repetitions===1)interval=1;
+    else if(repetitions===2)interval=6;
+    else interval=Math.round(interval*easeFactor);
+    easeFactor=Math.max(1.3,easeFactor+(0.1-(5-quality)*(0.08+(5-quality)*0.02)));
+  }
+  return{...item,interval,repetitions,easeFactor,nextReviewDate:addDays(todayISO(),interval),lastReviewed:todayISO()};
+}
+function dueInfo(item){
+  const d=daysBetween(item.nextReviewDate||todayISO());
+  if(d<=0)return{label:'Due now',cls:'now',days:d};
+  if(d===1)return{label:'Due tomorrow',cls:'soon',days:d};
+  if(d<=6)return{label:`Due in ${d}d`,cls:'soon',days:d};
+  return{label:`Due in ${d}d`,cls:'later',days:d};
+}
+
 /* ─── ERASER GAME ─────────────────────────────────── */
 function EraserGame({verse,verseRef,onComplete,onBack}){
-  const words=verse.trim().split(/\s+/);
+  const tokens=tokensFor(verse);
+  const useChunks=tokens.length<verse.trim().split(/\s+/).length;
+  const unit=useChunks?'phrases':'words';
   const [hidden,setHidden]=useState([]);
   const [done,setDone]=useState(false);
 
   function erase(){
-    const avail=words.map((_,i)=>i).filter(i=>!hidden.includes(i));
+    const avail=tokens.map((_,i)=>i).filter(i=>!hidden.includes(i));
     if(!avail.length){setDone(true);return;}
     const pick=avail[Math.floor(Math.random()*avail.length)];
     const next=[...hidden,pick];
     setHidden(next);
-    if(next.length>=words.length)setDone(true);
+    if(next.length>=tokens.length)setDone(true);
   }
   function reset(){setHidden([]);setDone(false);}
-  const pct=words.length?Math.round((hidden.length/words.length)*100):0;
+  const pct=tokens.length?Math.round((hidden.length/tokens.length)*100):0;
 
   return(
     <div className="game-wrap">
@@ -225,12 +313,13 @@ function EraserGame({verse,verseRef,onComplete,onBack}){
         <span className="game-title">The Eraser</span>
         <span className="ref-badge">{verseRef}</span>
       </div>
-      <p className="game-instruction">Read the verse aloud. Each click erases one word. Recite the full verse as it disappears!</p>
+      <p className="game-instruction">Read the verse aloud. Each click erases one {useChunks?'phrase':'word'}. Recite the full verse as it disappears!</p>
+      {useChunks&&<div className="chunk-note">📎 Long passage — grouped into phrases for easier practice</div>}
       <div className="eraser-verse">
-        {words.map((w,i)=>(
+        {tokens.map((t,i)=>(
           <span key={i}>
             <span className={hidden.includes(i)?'word-hidden':'word-visible'}>
-              {hidden.includes(i)?'▓'.repeat(Math.max(2,clean(w).length)):w}
+              {hidden.includes(i)?blankFor(t):t}
             </span>{' '}
           </span>
         ))}
@@ -238,18 +327,18 @@ function EraserGame({verse,verseRef,onComplete,onBack}){
       <div className="progress-track">
         <div className="progress-fill" style={{width:pct+'%'}}/>
       </div>
-      <div className="progress-lbl">{hidden.length}/{words.length} words hidden ({pct}%)</div>
+      <div className="progress-lbl">{hidden.length}/{tokens.length} {unit} hidden ({pct}%)</div>
       {done
         ?<div className="complete-box">
           <div className="complete-icon">🎉</div>
           <div className="complete-title">You recited it from memory!</div>
           <div className="game-actions" style={{justifyContent:'center'}}>
-            <button className="btn-gold" onClick={onComplete}>Claim +10 XP ✦</button>
+            <button className="btn-gold" onClick={()=>onComplete(4)}>Claim +10 XP ✦</button>
             <button className="btn-outline" onClick={reset}>Try Again</button>
           </div>
         </div>
         :<div className="game-actions">
-          <button className="btn-gold" onClick={erase}>Erase a Word ✕</button>
+          <button className="btn-gold" onClick={erase}>Erase a {useChunks?'Phrase':'Word'} ✕</button>
           <button className="btn-outline" onClick={reset}>Reset</button>
         </div>
       }
@@ -259,7 +348,8 @@ function EraserGame({verse,verseRef,onComplete,onBack}){
 
 /* ─── SCRAMBLE GAME ───────────────────────────────── */
 function ScrambleGame({verse,verseRef,onComplete,onBack}){
-  const orig=verse.trim().split(/\s+/);
+  const orig=tokensFor(verse);
+  const useChunks=orig.length<verse.trim().split(/\s+/).length;
   const [pool,setPool]=useState(()=>shuffle(orig.map((w,i)=>({w,id:i}))));
   const [sel,setSel]=useState([]);
   const [st,setSt]=useState('playing');
@@ -288,10 +378,11 @@ function ScrambleGame({verse,verseRef,onComplete,onBack}){
         <span className="game-title">Scrambled Stones</span>
         <span className="ref-badge">{verseRef}</span>
       </div>
-      <p className="game-instruction">Tap the word blocks in the correct order to rebuild the verse. Tap a selected word to remove it.</p>
+      <p className="game-instruction">Tap the {useChunks?'phrase':'word'} blocks in the correct order to rebuild the verse. Tap a selected block to remove it.</p>
+      {useChunks&&<div className="chunk-note">📎 Long passage — grouped into phrases for easier practice</div>}
       <div className={`answer-area${st==='wrong'?' shake':st==='correct'?' glow':''}`}>
         {sel.length===0
-          ?<span className="placeholder-text">Tap words below to place them here...</span>
+          ?<span className="placeholder-text">Tap blocks below to place them here...</span>
           :sel.map(item=>(
             <button key={item.id} className="word-chip sel" onClick={()=>tap(item,true)}>{item.w}</button>
           ))
@@ -309,12 +400,12 @@ function ScrambleGame({verse,verseRef,onComplete,onBack}){
           <div className="complete-icon">✅</div>
           <div className="complete-title">Perfect order! Well done!</div>
           <div className="game-actions" style={{justifyContent:'center'}}>
-            <button className="btn-gold" onClick={onComplete}>Claim +10 XP ✦</button>
+            <button className="btn-gold" onClick={()=>onComplete(5)}>Claim +10 XP ✦</button>
             <button className="btn-outline" onClick={reset}>Play Again</button>
           </div>
         </div>
         :<div style={{marginTop:12}}>
-          <button className="btn-outline btn-sm" onClick={reset}>🔀 Reshuffle Words</button>
+          <button className="btn-outline btn-sm" onClick={reset}>🔀 Reshuffle</button>
         </div>
       }
     </div>
@@ -363,7 +454,7 @@ function FirstLetterGame({verse,verseRef,onComplete,onBack}){
           <div className="complete-icon">🌟</div>
           <div className="complete-title">Scripture memorized! Glory!</div>
           <div className="game-actions" style={{justifyContent:'center'}}>
-            <button className="btn-gold" onClick={onComplete}>Claim +10 XP ✦</button>
+            <button className="btn-gold" onClick={()=>onComplete(3)}>Claim +10 XP ✦</button>
             <button className="btn-outline" onClick={()=>{setDone(false);setRevealed(false);}}>Try Again</button>
           </div>
         </div>
@@ -440,13 +531,13 @@ function RecallGame({verse,verseRef,onComplete,onBack}){
               <div className="complete-icon">🏆</div>
               <div className="complete-title">Perfect recall! To God be the glory!</div>
               <div className="game-actions" style={{justifyContent:'center'}}>
-                <button className="btn-gold" onClick={onComplete}>Claim +10 XP ✦</button>
+                <button className="btn-gold" onClick={()=>onComplete(5)}>Claim +10 XP ✦</button>
               </div>
             </div>
             :<div className="game-actions" style={{marginTop:14}}>
               <button className="btn-outline" onClick={()=>{setInput('');setChecked(false);}}>Try Again</button>
               {score>=70&&(
-                <button className="btn-gold" onClick={onComplete}>Accept Score & Claim XP</button>
+                <button className="btn-gold" onClick={()=>onComplete(score>=90?4:3)}>Accept Score & Claim XP</button>
               )}
             </div>
           }
@@ -496,6 +587,12 @@ function App(){
   useEffect(()=>lsSet('vault',vault),[vault]);
   useEffect(()=>lsSet('lastPlay',lastPlay),[lastPlay]);
 
+  /* Backfill SRS fields on old vault entries saved before spaced
+     repetition existed, so nothing breaks on upgrade. */
+  useEffect(()=>{
+    setVault(prev=>prev.map(v=>({...freshVaultItem(v.ref,v.text),...v})));
+  },[]);
+
   const rank=getRank(xp);
   const nextRank=getNextRank(xp);
   const xpPct=getXpPct(xp);
@@ -525,19 +622,25 @@ function App(){
     setShowManual(false);setManualText('');setApiErr('');
   }
 
-  function handleGameComplete(){
+  function handleGameComplete(quality=5){
     setXp(p=>p+10);
     if(lastPlay!==today){
       setStreak(p=>p+1);
       setLastPlay(today);
       setShowManna(true);
     }
+    setVault(prev=>prev.map(v=>v.ref===verseRef?scheduleReview(v,quality):v));
     setGameMode(null);
   }
 
   function saveToVault(){
     if(!activeVerse||vault.find(v=>v.ref===verseRef))return;
-    setVault(p=>[{ref:verseRef,text:activeVerse},...p]);
+    setVault(p=>[freshVaultItem(verseRef,activeVerse),...p]);
+  }
+
+  function startReviewSession(){
+    const due=[...vault].sort((a,b)=>daysBetween(a.nextReviewDate||todayISO())-daysBetween(b.nextReviewDate||todayISO()))[0];
+    if(due)loadFromVault(due);
   }
 
   function loadFromVault(item){
@@ -707,26 +810,49 @@ function App(){
       {/* VAULT TAB */}
       {tab==='vault'&&<>
         <div className="section-title">Review Vault</div>
+        {vault.length>0&&(()=>{
+          const dueCount=vault.filter(v=>daysBetween(v.nextReviewDate||todayISO())<=0).length;
+          return dueCount>0
+            ?<div className="due-banner">
+              <span className="due-banner-text"><span className="due-banner-count">{dueCount}</span> verse{dueCount!==1?'s':''} due for review</span>
+              <button className="btn-gold btn-sm" onClick={startReviewSession}>Start Review →</button>
+            </div>
+            :<div className="due-banner all-caught">
+              <span className="due-banner-text">✓ All caught up — nothing due today</span>
+            </div>;
+        })()}
         {vault.length===0
           ?<div className="empty-vault">
             Your vault is empty.<br/>
             Save verses from the Memory Lab to<br/>build your spaced repetition queue.
           </div>
           :<div className="vault-list">
-            {vault.map(item=>(
-              <div key={item.ref} className="vault-item">
-                <div style={{flex:1}} onClick={()=>loadFromVault(item)}>
-                  <div className="vault-item-ref">{item.ref}</div>
-                  <div className="vault-item-text">
-                    {item.text.length>90?item.text.slice(0,90)+'…':item.text}
+            {[...vault].sort((a,b)=>daysBetween(a.nextReviewDate||todayISO())-daysBetween(b.nextReviewDate||todayISO())).map(item=>{
+              const due=dueInfo(item);
+              const reps=item.repetitions||0;
+              return(
+                <div key={item.ref} className="vault-item">
+                  <div style={{flex:1}} onClick={()=>loadFromVault(item)}>
+                    <div className="vault-item-top">
+                      <div className="vault-item-ref">{item.ref}</div>
+                      <span className={`due-chip ${due.cls}`}>{due.label}</span>
+                    </div>
+                    <div className="vault-item-text">
+                      {item.text.length>90?item.text.slice(0,90)+'…':item.text}
+                    </div>
+                    <div className="mastery-dots">
+                      {[0,1,2,3,4].map(i=>(
+                        <span key={i} className={`mastery-dot${i<reps?' filled':''}`}/>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:5,flexShrink:0}}>
+                    <button className="btn-outline btn-sm" onClick={()=>loadFromVault(item)}>Review</button>
+                    <button className="vault-del" onClick={()=>setVault(p=>p.filter(v=>v.ref!==item.ref))}>✕</button>
                   </div>
                 </div>
-                <div style={{display:'flex',flexDirection:'column',gap:5,flexShrink:0}}>
-                  <button className="btn-outline btn-sm" onClick={()=>loadFromVault(item)}>Practice</button>
-                  <button className="vault-del" onClick={()=>setVault(p=>p.filter(v=>v.ref!==item.ref))}>✕</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         }
       </>}
