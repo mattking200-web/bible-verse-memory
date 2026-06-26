@@ -154,6 +154,29 @@ body{font-family:'Lato',sans-serif;background:#faf6ef;color:#1a1a2e;min-height:1
 .mastery-dot{width:5px;height:5px;border-radius:50%;background:#e7e0cc}
 .mastery-dot.filled{background:#c9a84c}
 .chunk-note{display:inline-block;background:#eef3fb;border:1px solid rgba(91,123,171,.3);border-radius:8px;padding:5px 10px;font-size:11px;color:#5b7bab;margin-bottom:10px;font-style:italic}
+/* VOICE RECITATION */
+.voice-recite{margin-top:14px;text-align:center}
+.voice-listening{background:#fff5f0;border:1.5px solid rgba(230,126,34,.4);border-radius:14px;padding:18px 16px;text-align:center}
+.voice-listening-label{font-size:13px;color:#a9591f;font-weight:700;letter-spacing:.3px}
+.voice-pulse{display:inline-block;font-size:18px;animation:voicepulse 1.2s ease-in-out infinite;margin-right:4px}
+@keyframes voicepulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:.55}}
+.voice-interim{font-family:'Crimson Text',serif;font-style:italic;font-size:15px;color:#4a4a6a;margin:10px 0;min-height:22px;line-height:1.5;word-wrap:break-word}
+.voice-result{margin-top:6px}
+/* MOVE & MEMORIZE */
+.move-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid rgba(201,168,76,.25);border-radius:14px;padding:12px 16px;margin-bottom:14px}
+.move-toggle-label{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:#1a2744}
+.move-toggle-desc{font-size:11px;color:#8a8aaa;margin-top:2px;line-height:1.4}
+.toggle-switch{width:46px;height:26px;border-radius:99px;background:#e7e0cc;border:none;position:relative;cursor:pointer;flex-shrink:0;transition:background .25s;padding:0}
+.toggle-switch.on{background:linear-gradient(135deg,#c9a84c,#e8c96b)}
+.toggle-knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .25s}
+.toggle-switch.on .toggle-knob{left:23px}
+.movement-card{background:linear-gradient(135deg,#eef3fb,#fff);border:1.5px solid rgba(91,123,171,.35);border-radius:18px;padding:26px 20px;text-align:center;animation:popIn .4s ease}
+.movement-icon{font-size:46px;margin-bottom:8px}
+.movement-label{font-family:'Playfair Display',serif;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#5b7bab;margin-bottom:10px}
+.movement-text{font-family:'Crimson Text',serif;font-size:17px;color:#1a2744;line-height:1.6;margin-bottom:14px}
+.movement-timer{font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:#5b7bab;margin-bottom:14px}
+/* BACKUP & RESTORE */
+.backup-actions{display:flex;gap:8px;flex-wrap:wrap}
 /* MANNA MODAL */
 .manna-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(26,39,68,.72);display:flex;align-items:center;justify-content:center;z-index:1000;animation:fadeIn .3s ease;padding:20px}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -287,13 +310,201 @@ function dueInfo(item){
   return{label:`Due in ${d}d`,cls:'later',days:d};
 }
 
+/* ─── SPEECH-VERIFIED RECITATION ───────────────────
+   Listens via the Web Speech API and grades the spoken
+   words against the verse, same word-match approach as
+   Active Recall. Verified scores carry more weight in the
+   SM-2 quality than plain self-report. Gracefully renders
+   nothing if the browser has no speech recognition (no
+   Firefox support) — callers always keep a self-report
+   fallback alongside. */
+function hasSpeechRecognition(){
+  return typeof window!=='undefined'&&!!(window.SpeechRecognition||window.webkitSpeechRecognition);
+}
+function scoreTranscript(transcript,target){
+  const targetWords=target.trim().split(/\s+/);
+  const saidWords=transcript.trim().split(/\s+/).filter(Boolean);
+  const cleanSaid=saidWords.map(clean);
+  const LOOKAHEAD=4;
+  let saidPtr=0,correct=0;
+  const results=targetWords.map(w=>{
+    const cw=clean(w);
+    if(!cw)return{w,said:null,ok:true};
+    for(let look=0;look<=LOOKAHEAD&&saidPtr+look<cleanSaid.length;look++){
+      if(cleanSaid[saidPtr+look]===cw){
+        const said=saidWords[saidPtr+look];
+        saidPtr+=look+1;
+        correct++;
+        return{w,said,ok:true};
+      }
+    }
+    return{w,said:null,ok:false};
+  });
+  const total=targetWords.filter(w=>clean(w)).length||1;
+  const score=Math.round((correct/total)*100);
+  return{score,results};
+}
+function VoiceRecite({verse,onVerified}){
+  const [status,setStatus]=useState(hasSpeechRecognition()?'idle':'unsupported');
+  const [interim,setInterim]=useState('');
+  const [result,setResult]=useState(null);
+  const [errorMsg,setErrorMsg]=useState('');
+  const recRef=useRef(null);
+  const stopTimerRef=useRef(null);
+
+  useEffect(()=>()=>{
+    recRef.current?.abort?.();
+    if(stopTimerRef.current)clearTimeout(stopTimerRef.current);
+  },[]);
+
+  function start(){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    const rec=new SR();
+    rec.lang='en-US';
+    rec.continuous=true;
+    rec.interimResults=true;
+    rec.maxAlternatives=1;
+    let finalText='';
+    let latestText='';
+    rec.onresult=(e)=>{
+      let interimText='';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const t=e.results[i][0].transcript;
+        if(e.results[i].isFinal)finalText+=t+' ';
+        else interimText+=t;
+      }
+      latestText=(finalText+interimText).trim();
+      setInterim(latestText);
+    };
+    rec.onerror=(e)=>{
+      if(e.error==='not-allowed'||e.error==='service-not-allowed'){
+        setStatus('denied');
+      }else{
+        setErrorMsg(e.error==='no-speech'?"Didn't hear anything — try again.":'Voice recognition had trouble — try again.');
+        setStatus('idle');
+      }
+    };
+    rec.onend=()=>{
+      if(stopTimerRef.current)clearTimeout(stopTimerRef.current);
+      // Some browsers (notably iOS Safari) can fail to ever mark a result
+      // isFinal, so finalText stays empty even though speech was captured.
+      // Fall back to whatever interim transcript we last saw.
+      const text=(finalText.trim()||latestText).trim();
+      if(text){
+        setResult(scoreTranscript(text,verse));
+        setStatus('scored');
+      }else{
+        setStatus('idle');
+      }
+    };
+    recRef.current=rec;
+    setErrorMsg('');setInterim('');setResult(null);setStatus('listening');
+    rec.start();
+    stopTimerRef.current=setTimeout(()=>rec.stop(),30000);
+  }
+  function stop(){recRef.current?.stop();}
+  function retry(){setStatus('idle');setResult(null);setInterim('');}
+
+  if(status==='unsupported')return(
+    <div className="voice-recite">
+      <p className="hint-text" style={{textAlign:'center',marginBottom:0}}>
+        🎤 Voice verify isn't available in this browser. On iPhone, tap into a text field and use your keyboard's dictation mic instead — try the Active Recall Quiz mode, which works great with it.
+      </p>
+    </div>
+  );
+
+  if(status==='denied')return(
+    <div className="voice-recite">
+      <div className="error-msg">🎤 Microphone access was denied or blocked. Check your browser's site permissions, then try again — or use self-report below.</div>
+      <button className="btn-outline btn-sm" style={{marginTop:8}} onClick={()=>setStatus('idle')}>🎤 Try Again</button>
+    </div>
+  );
+
+  return(
+    <div className="voice-recite">
+      {status==='idle'&&(
+        <div>
+          {errorMsg&&<div className="hint-text" style={{color:'#c0392b',marginBottom:6}}>{errorMsg}</div>}
+          <button className="btn-gold" onClick={start}>🎤 Recite &amp; Verify by Voice</button>
+        </div>
+      )}
+      {status==='listening'&&(
+        <div className="voice-listening">
+          <span className="voice-listening-label"><span className="voice-pulse">🎙</span>Listening... speak the verse aloud</span>
+          <div className="voice-interim">{interim||'...'}</div>
+          <button className="btn-outline btn-sm" onClick={stop}>Stop &amp; Check</button>
+        </div>
+      )}
+      {status==='scored'&&result&&(
+        <div className="voice-result">
+          <div className="score-circle" style={{margin:'8px auto 14px'}}>
+            <span className="score-num">{result.score}%</span>
+            <span className="score-lbl">Spoken Match</span>
+          </div>
+          <div className="result-area">
+            {result.results.map((r,i)=>(
+              <span key={i} className={r.ok?'r-correct':'r-wrong'}>{r.w} </span>
+            ))}
+          </div>
+          <div className="game-actions" style={{justifyContent:'center',marginTop:12}}>
+            <button className="btn-outline btn-sm" onClick={retry}>🎤 Try Again</button>
+            {result.score>=70&&(
+              <button className="btn-gold" onClick={()=>onVerified(result.score===100?5:result.score>=90?4:3)}>
+                Use Voice Score (+10 XP)
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── MOVE & MEMORIZE ───────────────────────────────
+   Embodied cognition research suggests pairing movement with
+   encoding can help recall, and this is also just a nice brain
+   break. Kept low-impact and entirely optional — the countdown
+   is a pacing aid, not a gate, so "Continue" always works
+   immediately if someone would rather skip it. */
+const MOVEMENTS=[
+  {icon:'🙆',text:'Reach both arms overhead, then bend down toward your toes — 3 times, reciting as you go.'},
+  {icon:'🚶',text:'March in place for a few seconds, lifting your knees high, while saying the verse aloud.'},
+  {icon:'🔄',text:'Touch your right elbow to your left knee, then your left elbow to your right knee — 5 times.'},
+  {icon:'🧍',text:'Balance on one foot for a few seconds while reciting, then switch feet.'},
+  {icon:'👀',text:'Slowly turn your head left, then right, twice, keeping your eyes on something steady.'},
+  {icon:'🌀',text:'Trace a big figure-8 in the air with one hand while you speak the verse.'},
+  {icon:'🤸',text:'Roll your shoulders backward five times while saying the verse.'},
+  {icon:'🔃',text:'Do a few slow torso twists, reaching gently across your body each time.'}
+];
+function MovementPrompt({onContinue}){
+  const [move]=useState(()=>MOVEMENTS[Math.floor(Math.random()*MOVEMENTS.length)]);
+  const [seconds,setSeconds]=useState(10);
+  useEffect(()=>{
+    if(seconds<=0)return;
+    const t=setTimeout(()=>setSeconds(s=>s-1),1000);
+    return()=>clearTimeout(t);
+  },[seconds]);
+  return(
+    <div className="movement-card">
+      <div className="movement-icon">{move.icon}</div>
+      <div className="movement-label">Move &amp; Memorize</div>
+      <p className="movement-text">{move.text}</p>
+      <div className="movement-timer">{seconds>0?`${seconds}s`:'Ready!'}</div>
+      <button className="btn-gold" onClick={onContinue}>Continue →</button>
+    </div>
+  );
+}
+
 /* ─── ERASER GAME ─────────────────────────────────── */
-function EraserGame({verse,verseRef,onComplete,onBack}){
+function EraserGame({verse,verseRef,onComplete,onBack,moveMode}){
+  verse=verse||'';
   const tokens=tokensFor(verse);
   const useChunks=tokens.length<verse.trim().split(/\s+/).length;
   const unit=useChunks?'phrases':'words';
   const [hidden,setHidden]=useState([]);
   const [done,setDone]=useState(false);
+  const [showMove,setShowMove]=useState(false);
+  const [moveShown,setMoveShown]=useState(false);
 
   function erase(){
     const avail=tokens.map((_,i)=>i).filter(i=>!hidden.includes(i));
@@ -301,9 +512,13 @@ function EraserGame({verse,verseRef,onComplete,onBack}){
     const pick=avail[Math.floor(Math.random()*avail.length)];
     const next=[...hidden,pick];
     setHidden(next);
-    if(next.length>=tokens.length)setDone(true);
+    if(next.length>=tokens.length){setDone(true);return;}
+    if(moveMode&&tokens.length>=4&&!moveShown&&next.length>=Math.ceil(tokens.length/2)){
+      setMoveShown(true);
+      setShowMove(true);
+    }
   }
-  function reset(){setHidden([]);setDone(false);}
+  function reset(){setHidden([]);setDone(false);setShowMove(false);setMoveShown(false);}
   const pct=tokens.length?Math.round((hidden.length/tokens.length)*100):0;
 
   return(
@@ -313,46 +528,54 @@ function EraserGame({verse,verseRef,onComplete,onBack}){
         <span className="game-title">The Eraser</span>
         <span className="ref-badge">{verseRef}</span>
       </div>
-      <p className="game-instruction">Read the verse aloud. Each click erases one {useChunks?'phrase':'word'}. Recite the full verse as it disappears!</p>
-      {useChunks&&<div className="chunk-note">📎 Long passage — grouped into phrases for easier practice</div>}
-      <div className="eraser-verse">
-        {tokens.map((t,i)=>(
-          <span key={i}>
-            <span className={hidden.includes(i)?'word-hidden':'word-visible'}>
-              {hidden.includes(i)?blankFor(t):t}
-            </span>{' '}
-          </span>
-        ))}
-      </div>
-      <div className="progress-track">
-        <div className="progress-fill" style={{width:pct+'%'}}/>
-      </div>
-      <div className="progress-lbl">{hidden.length}/{tokens.length} {unit} hidden ({pct}%)</div>
-      {done
-        ?<div className="complete-box">
-          <div className="complete-icon">🎉</div>
-          <div className="complete-title">You recited it from memory!</div>
-          <div className="game-actions" style={{justifyContent:'center'}}>
-            <button className="btn-gold" onClick={()=>onComplete(4)}>Claim +10 XP ✦</button>
-            <button className="btn-outline" onClick={reset}>Try Again</button>
+      {showMove
+        ?<MovementPrompt onContinue={()=>setShowMove(false)}/>
+        :<>
+          <p className="game-instruction">Read the verse aloud. Each click erases one {useChunks?'phrase':'word'}. Recite the full verse as it disappears!</p>
+          {useChunks&&<div className="chunk-note">📎 Long passage — grouped into phrases for easier practice</div>}
+          <div className="eraser-verse">
+            {tokens.map((t,i)=>(
+              <span key={i}>
+                <span className={hidden.includes(i)?'word-hidden':'word-visible'}>
+                  {hidden.includes(i)?blankFor(t):t}
+                </span>{' '}
+              </span>
+            ))}
           </div>
-        </div>
-        :<div className="game-actions">
-          <button className="btn-gold" onClick={erase}>Erase a {useChunks?'Phrase':'Word'} ✕</button>
-          <button className="btn-outline" onClick={reset}>Reset</button>
-        </div>
+          <div className="progress-track">
+            <div className="progress-fill" style={{width:pct+'%'}}/>
+          </div>
+          <div className="progress-lbl">{hidden.length}/{tokens.length} {unit} hidden ({pct}%)</div>
+          {done
+            ?<div className="complete-box">
+              <div className="complete-icon">🎉</div>
+              <div className="complete-title">You recited it from memory!</div>
+              <VoiceRecite verse={verse} onVerified={onComplete}/>
+              <div className="game-actions" style={{justifyContent:'center',marginTop:10}}>
+                <button className="btn-outline btn-sm" onClick={()=>onComplete(4)}>Skip — Self-Report &amp; Claim</button>
+                <button className="btn-outline btn-sm" onClick={reset}>Try Again</button>
+              </div>
+            </div>
+            :<div className="game-actions">
+              <button className="btn-gold" onClick={erase}>Erase a {useChunks?'Phrase':'Word'} ✕</button>
+              <button className="btn-outline" onClick={reset}>Reset</button>
+            </div>
+          }
+        </>
       }
     </div>
   );
 }
 
 /* ─── SCRAMBLE GAME ───────────────────────────────── */
-function ScrambleGame({verse,verseRef,onComplete,onBack}){
+function ScrambleGame({verse,verseRef,onComplete,onBack,moveMode}){
+  verse=verse||'';
   const orig=tokensFor(verse);
   const useChunks=orig.length<verse.trim().split(/\s+/).length;
   const [pool,setPool]=useState(()=>shuffle(orig.map((w,i)=>({w,id:i}))));
   const [sel,setSel]=useState([]);
   const [st,setSt]=useState('playing');
+  const [showMove,setShowMove]=useState(()=>!!moveMode&&orig.length>=4);
 
   function tap(item,fromSel){
     if(st==='correct')return;
@@ -378,35 +601,40 @@ function ScrambleGame({verse,verseRef,onComplete,onBack}){
         <span className="game-title">Scrambled Stones</span>
         <span className="ref-badge">{verseRef}</span>
       </div>
-      <p className="game-instruction">Tap the {useChunks?'phrase':'word'} blocks in the correct order to rebuild the verse. Tap a selected block to remove it.</p>
-      {useChunks&&<div className="chunk-note">📎 Long passage — grouped into phrases for easier practice</div>}
-      <div className={`answer-area${st==='wrong'?' shake':st==='correct'?' glow':''}`}>
-        {sel.length===0
-          ?<span className="placeholder-text">Tap blocks below to place them here...</span>
-          :sel.map(item=>(
-            <button key={item.id} className="word-chip sel" onClick={()=>tap(item,true)}>{item.w}</button>
-          ))
-        }
-      </div>
-      {st!=='correct'&&(
-        <div className="word-pool">
-          {remaining.map(item=>(
-            <button key={item.id} className="word-chip unsel" onClick={()=>tap(item,false)}>{item.w}</button>
-          ))}
-        </div>
-      )}
-      {st==='correct'
-        ?<div className="complete-box">
-          <div className="complete-icon">✅</div>
-          <div className="complete-title">Perfect order! Well done!</div>
-          <div className="game-actions" style={{justifyContent:'center'}}>
-            <button className="btn-gold" onClick={()=>onComplete(5)}>Claim +10 XP ✦</button>
-            <button className="btn-outline" onClick={reset}>Play Again</button>
+      {showMove
+        ?<MovementPrompt onContinue={()=>setShowMove(false)}/>
+        :<>
+          <p className="game-instruction">Tap the {useChunks?'phrase':'word'} blocks in the correct order to rebuild the verse. Tap a selected block to remove it.</p>
+          {useChunks&&<div className="chunk-note">📎 Long passage — grouped into phrases for easier practice</div>}
+          <div className={`answer-area${st==='wrong'?' shake':st==='correct'?' glow':''}`}>
+            {sel.length===0
+              ?<span className="placeholder-text">Tap blocks below to place them here...</span>
+              :sel.map(item=>(
+                <button key={item.id} className="word-chip sel" onClick={()=>tap(item,true)}>{item.w}</button>
+              ))
+            }
           </div>
-        </div>
-        :<div style={{marginTop:12}}>
-          <button className="btn-outline btn-sm" onClick={reset}>🔀 Reshuffle</button>
-        </div>
+          {st!=='correct'&&(
+            <div className="word-pool">
+              {remaining.map(item=>(
+                <button key={item.id} className="word-chip unsel" onClick={()=>tap(item,false)}>{item.w}</button>
+              ))}
+            </div>
+          )}
+          {st==='correct'
+            ?<div className="complete-box">
+              <div className="complete-icon">✅</div>
+              <div className="complete-title">Perfect order! Well done!</div>
+              <div className="game-actions" style={{justifyContent:'center'}}>
+                <button className="btn-gold" onClick={()=>onComplete(5)}>Claim +10 XP ✦</button>
+                <button className="btn-outline" onClick={reset}>Play Again</button>
+              </div>
+            </div>
+            :<div style={{marginTop:12}}>
+              <button className="btn-outline btn-sm" onClick={reset}>🔀 Reshuffle</button>
+            </div>
+          }
+        </>
       }
     </div>
   );
@@ -414,9 +642,15 @@ function ScrambleGame({verse,verseRef,onComplete,onBack}){
 
 /* ─── FIRST LETTER GAME ───────────────────────────── */
 function FirstLetterGame({verse,verseRef,onComplete,onBack}){
+  verse=verse||'';
   const words=verse.trim().split(/\s+/);
   const [revealed,setRevealed]=useState(false);
   const [done,setDone]=useState(false);
+  const [voiceQuality,setVoiceQuality]=useState(null);
+
+  function finishWithVoice(q){setVoiceQuality(q);setDone(true);}
+  function finishWithSelfReport(){setVoiceQuality(3);setDone(true);}
+  function tryAgain(){setDone(false);setRevealed(false);setVoiceQuality(null);}
 
   return(
     <div className="game-wrap">
@@ -442,20 +676,25 @@ function FirstLetterGame({verse,verseRef,onComplete,onBack}){
         })}
       </div>
       {!done
-        ?<div className="game-actions" style={{marginTop:16}}>
-          <button className="btn-outline" onClick={()=>setRevealed(r=>!r)}>
-            {revealed?'🙈 Hide Verse':'👁 Peek at Verse'}
-          </button>
+        ?<div style={{marginTop:16}}>
+          <div className="game-actions">
+            <button className="btn-outline" onClick={()=>setRevealed(r=>!r)}>
+              {revealed?'🙈 Hide Verse':'👁 Peek at Verse'}
+            </button>
+          </div>
+          {!revealed&&<VoiceRecite verse={verse} onVerified={finishWithVoice}/>}
           {!revealed&&(
-            <button className="btn-gold" onClick={()=>setDone(true)}>I Recited It! ✓</button>
+            <div style={{marginTop:10,textAlign:'center'}}>
+              <button className="btn-outline btn-sm" onClick={finishWithSelfReport}>Skip — Self-Report Instead</button>
+            </div>
           )}
         </div>
         :<div className="complete-box">
           <div className="complete-icon">🌟</div>
           <div className="complete-title">Scripture memorized! Glory!</div>
           <div className="game-actions" style={{justifyContent:'center'}}>
-            <button className="btn-gold" onClick={()=>onComplete(3)}>Claim +10 XP ✦</button>
-            <button className="btn-outline" onClick={()=>{setDone(false);setRevealed(false);}}>Try Again</button>
+            <button className="btn-gold" onClick={()=>onComplete(voiceQuality??3)}>Claim +10 XP ✦</button>
+            <button className="btn-outline" onClick={tryAgain}>Try Again</button>
           </div>
         </div>
       }
@@ -465,6 +704,7 @@ function FirstLetterGame({verse,verseRef,onComplete,onBack}){
 
 /* ─── RECALL GAME ─────────────────────────────────── */
 function RecallGame({verse,verseRef,onComplete,onBack}){
+  verse=verse||'';
   const [input,setInput]=useState('');
   const [checked,setChecked]=useState(false);
   const orig=verse.trim().split(/\s+/);
@@ -581,16 +821,26 @@ function App(){
   const [vault,setVault]=useState(()=>lsGet('vault')||[]);
   const [showManna,setShowManna]=useState(false);
   const [lastPlay,setLastPlay]=useState(()=>lsGet('lastPlay')||'');
+  const [importPreview,setImportPreview]=useState(null);
+  const [importError,setImportError]=useState('');
+  const [moveMode,setMoveMode]=useState(()=>lsGet('moveMode')||false);
+  const fileInputRef=useRef(null);
 
+  useEffect(()=>lsSet('moveMode',moveMode),[moveMode]);
   useEffect(()=>lsSet('xp',xp),[xp]);
   useEffect(()=>lsSet('streak',streak),[streak]);
   useEffect(()=>lsSet('vault',vault),[vault]);
   useEffect(()=>lsSet('lastPlay',lastPlay),[lastPlay]);
 
   /* Backfill SRS fields on old vault entries saved before spaced
-     repetition existed, so nothing breaks on upgrade. */
+     repetition existed, so nothing breaks on upgrade. Also drops any
+     entry missing a usable ref/text -- a single corrupted entry should
+     never be able to crash the whole vault on every future load. */
   useEffect(()=>{
-    setVault(prev=>prev.map(v=>({...freshVaultItem(v.ref,v.text),...v})));
+    setVault(prev=>prev
+      .filter(v=>v&&typeof v.ref==='string'&&v.ref.trim()&&typeof v.text==='string'&&v.text.trim())
+      .map(v=>({...freshVaultItem(v.ref,v.text),...v}))
+    );
   },[]);
 
   const rank=getRank(xp);
@@ -638,20 +888,66 @@ function App(){
     setVault(p=>[freshVaultItem(verseRef,activeVerse),...p]);
   }
 
+  function exportBackup(){
+    const data={app:'bible-memory-vault',version:1,exportedAt:new Date().toISOString(),xp,streak,lastPlay,vault};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`bible-memory-vault-backup-${todayISO()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function triggerImport(){
+    setImportError('');
+    fileInputRef.current?.click();
+  }
+
+  function handleImportFile(e){
+    const file=e.target.files?.[0];
+    e.target.value='';
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(evt)=>{
+      try{
+        const data=JSON.parse(evt.target.result);
+        if(!Array.isArray(data.vault)||typeof data.xp!=='number')throw new Error('bad shape');
+        setImportError('');
+        setImportPreview(data);
+      }catch(err){
+        setImportError("That file doesn't look like a valid Bible Memory Vault backup.");
+      }
+    };
+    reader.onerror=()=>setImportError('Could not read that file.');
+    reader.readAsText(file);
+  }
+
+  function applyImport(){
+    if(!importPreview)return;
+    setXp(importPreview.xp||0);
+    setStreak(importPreview.streak||0);
+    setLastPlay(importPreview.lastPlay||'');
+    setVault(Array.isArray(importPreview.vault)?importPreview.vault.map(v=>({...freshVaultItem(v.ref,v.text),...v})):[]);
+    setImportPreview(null);
+  }
+
   function startReviewSession(){
     const due=[...vault].sort((a,b)=>daysBetween(a.nextReviewDate||todayISO())-daysBetween(b.nextReviewDate||todayISO()))[0];
     if(due)loadFromVault(due);
   }
 
   function loadFromVault(item){
-    setVerseRef(item.ref);setVerseText(item.text);
+    setVerseRef(item.ref||'');setVerseText(item.text||'');
     setShowManual(false);setManualText('');setApiErr('');
     setTab('lab');
   }
 
   /* ── GAME SCREEN ── */
   if(gameMode){
-    const gp={verse:activeVerse,verseRef,onComplete:handleGameComplete,onBack:()=>setGameMode(null)};
+    const gp={verse:activeVerse,verseRef,onComplete:handleGameComplete,onBack:()=>setGameMode(null),moveMode};
     return(
       <div className="vault-wrap">
         {showManna&&<MannaModal onClose={()=>setShowManna(false)}/>}
@@ -674,6 +970,24 @@ function App(){
   return(
     <div className="vault-wrap">
       {showManna&&<MannaModal onClose={()=>setShowManna(false)}/>}
+      {importPreview&&(
+        <div className="manna-overlay" onClick={()=>setImportPreview(null)}>
+          <div className="manna-card" onClick={e=>e.stopPropagation()}>
+            <div className="manna-icon">📥</div>
+            <div className="manna-badge">Restore Backup</div>
+            <div className="manna-title">Replace current data?</div>
+            <p className="manna-quote">
+              This backup has {importPreview.xp||0} XP, a {importPreview.streak||0}-day streak,
+              and {importPreview.vault?.length||0} saved verse{importPreview.vault?.length===1?'':'s'}.
+              Importing will overwrite what's currently on this device.
+            </p>
+            <div style={{display:'flex',gap:8,marginTop:14}}>
+              <button className="btn-outline" style={{flex:1}} onClick={()=>setImportPreview(null)}>Cancel</button>
+              <button className="btn-gold" style={{flex:1}} onClick={applyImport}>Restore</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="header">
         <div className="header-ornament">✦ ✦ ✦</div>
@@ -783,6 +1097,20 @@ function App(){
             </button>
           </div>
 
+          <div className="move-toggle-row">
+            <div>
+              <div className="move-toggle-label">🏃 Move &amp; Memorize</div>
+              <div className="move-toggle-desc">Adds short movement breaks to The Eraser &amp; Scrambled Stones</div>
+            </div>
+            <button
+              className={`toggle-switch${moveMode?' on':''}`}
+              onClick={()=>setMoveMode(m=>!m)}
+              aria-label="Toggle Move and Memorize mode"
+            >
+              <span className="toggle-knob"/>
+            </button>
+          </div>
+
           <div className="section-title">Choose a Game Mode</div>
           <div className="mode-grid">
             {[
@@ -827,18 +1155,19 @@ function App(){
             Save verses from the Memory Lab to<br/>build your spaced repetition queue.
           </div>
           :<div className="vault-list">
-            {[...vault].sort((a,b)=>daysBetween(a.nextReviewDate||todayISO())-daysBetween(b.nextReviewDate||todayISO())).map(item=>{
+            {[...vault].filter(v=>v&&v.text).sort((a,b)=>daysBetween(a.nextReviewDate||todayISO())-daysBetween(b.nextReviewDate||todayISO())).map((item,i)=>{
               const due=dueInfo(item);
               const reps=item.repetitions||0;
+              const text=item.text||'';
               return(
-                <div key={item.ref} className="vault-item">
+                <div key={item.ref||i} className="vault-item">
                   <div style={{flex:1}} onClick={()=>loadFromVault(item)}>
                     <div className="vault-item-top">
-                      <div className="vault-item-ref">{item.ref}</div>
+                      <div className="vault-item-ref">{item.ref||'(untitled verse)'}</div>
                       <span className={`due-chip ${due.cls}`}>{due.label}</span>
                     </div>
                     <div className="vault-item-text">
-                      {item.text.length>90?item.text.slice(0,90)+'…':item.text}
+                      {text.length>90?text.slice(0,90)+'…':text}
                     </div>
                     <div className="mastery-dots">
                       {[0,1,2,3,4].map(i=>(
@@ -855,12 +1184,66 @@ function App(){
             })}
           </div>
         }
+
+        <div className="card" style={{marginTop:18}}>
+          <div className="section-title" style={{marginTop:0}}>Backup &amp; Restore</div>
+          <p className="hint-text" style={{marginBottom:10}}>
+            Your streak, XP, and vault live only in this browser. Download a backup before clearing your cache or switching devices.
+          </p>
+          <div className="backup-actions">
+            <button className="btn-outline btn-sm" onClick={exportBackup}>⬇ Download Backup</button>
+            <button className="btn-outline btn-sm" onClick={triggerImport}>⬆ Restore from File</button>
+          </div>
+          <input ref={fileInputRef} type="file" accept=".json,application/json" style={{display:'none'}} onChange={handleImportFile}/>
+          {importError&&<div className="error-msg" style={{marginTop:10}}>⚠ {importError}</div>}
+        </div>
       </>}
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+/* ─── ERROR BOUNDARY ───────────────────────────────
+   A blank, unrecoverable screen is the worst possible failure
+   mode for a single-page app — there's no separate page to go
+   "back" to. This catches anything unanticipated, keeps XP and
+   streak, and offers one-tap cleanup of any vault entry that
+   might be malformed, since that's the most likely cause. */
+class ErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={hasError:false};}
+  static getDerivedStateFromError(){return{hasError:true};}
+  componentDidCatch(){}
+  handleCleanup=()=>{
+    try{
+      const raw=localStorage.getItem('bmv_vault');
+      const arr=raw?JSON.parse(raw):[];
+      const cleaned=Array.isArray(arr)?arr.filter(v=>v&&typeof v.ref==='string'&&v.ref.trim()&&typeof v.text==='string'&&v.text.trim()):[];
+      localStorage.setItem('bmv_vault',JSON.stringify(cleaned));
+    }catch(e){
+      localStorage.removeItem('bmv_vault');
+    }
+    window.location.reload();
+  }
+  render(){
+    if(this.state.hasError){
+      return(
+        <div style={{maxWidth:420,margin:'15vh auto',padding:'28px 24px',textAlign:'center',fontFamily:"'Lato',sans-serif"}}>
+          <div style={{fontSize:44,marginBottom:10}}>🛠️</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:900,color:'#1a2744',marginBottom:10}}>Something went wrong</div>
+          <p style={{color:'#4a4a6a',lineHeight:1.6,marginBottom:18,fontSize:14}}>
+            This usually means one saved verse has missing or corrupted data.
+            Tap below to clean up your vault and continue — your XP and streak stay safe.
+          </p>
+          <button onClick={this.handleCleanup} style={{background:'linear-gradient(135deg,#c9a84c,#e8c96b)',color:'#1a2744',border:'none',borderRadius:11,padding:'12px 24px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+            Clean Up &amp; Continue
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
 </script>
 </body>
 </html>
