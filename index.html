@@ -282,23 +282,25 @@ function blankFor(token){
 
 /* ─── SPACED REPETITION (simplified SM-2) ──────────
    Each vault verse tracks interval/repetitions/easeFactor.
-   On review, quality (0-5) drives the next interval:
-   q<3 resets to 1 day (struggled); q>=3 grows the interval
-   1 → 6 → interval*easeFactor, same as classic SM-2. */
+   q<3 resets to 1 day; q>=3 grows: 1 → 3 → 7 → up to 21 days.
+   easeFactor starts at 1.6 (not 2.5) and max interval is 21 days —
+   scripture needs frequent review even when well-known. */
+const MAX_INTERVAL=21;
 function todayISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 function addDays(dateStr,days){const [y,m,d]=dateStr.split('-').map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+days);return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`}
 function daysBetween(dateStr){const [y,m,d]=dateStr.split('-').map(Number);const target=new Date(y,m-1,d);const now=new Date();const mid=new Date(now.getFullYear(),now.getMonth(),now.getDate());return Math.round((target-mid)/86400000)}
-function freshVaultItem(ref,text){return{ref,text,interval:1,repetitions:0,easeFactor:2.5,nextReviewDate:todayISO(),lastReviewed:null,addedDate:todayISO()}}
+function freshVaultItem(ref,text){return{ref,text,interval:1,repetitions:0,easeFactor:1.6,nextReviewDate:todayISO(),lastReviewed:null,addedDate:todayISO()}}
 function scheduleReview(item,quality){
-  let{interval=1,repetitions=0,easeFactor=2.5}=item;
+  let{interval=1,repetitions=0,easeFactor=1.6}=item;
   if(quality<3){
     repetitions=0;interval=1;
   }else{
     repetitions+=1;
     if(repetitions===1)interval=1;
-    else if(repetitions===2)interval=6;
-    else interval=Math.round(interval*easeFactor);
-    easeFactor=Math.max(1.3,easeFactor+(0.1-(5-quality)*(0.08+(5-quality)*0.02)));
+    else if(repetitions===2)interval=3;
+    else if(repetitions===3)interval=7;
+    else interval=Math.min(MAX_INTERVAL,Math.round(interval*easeFactor));
+    easeFactor=Math.max(1.3,Math.min(2.0,easeFactor+(0.1-(5-quality)*(0.08+(5-quality)*0.02))));
   }
   return{...item,interval,repetitions,easeFactor,nextReviewDate:addDays(todayISO(),interval),lastReviewed:todayISO()};
 }
@@ -325,17 +327,30 @@ function scoreTranscript(transcript,target){
   const targetWords=target.trim().split(/\s+/);
   const saidWords=transcript.trim().split(/\s+/).filter(Boolean);
   const cleanSaid=saidWords.map(clean);
-  const LOOKAHEAD=4;
+  // LOOKAHEAD=8 handles up to 8 filler/inserted words before a match.
+  // Two-word merge handles speech recognisers splitting compound words
+  // ('who ever' -> 'whoever', 'some one' -> 'someone', etc.).
+  const LOOKAHEAD=8;
   let saidPtr=0,correct=0;
   const results=targetWords.map(w=>{
     const cw=clean(w);
     if(!cw)return{w,said:null,ok:true};
     for(let look=0;look<=LOOKAHEAD&&saidPtr+look<cleanSaid.length;look++){
+      // Single-word match
       if(cleanSaid[saidPtr+look]===cw){
         const said=saidWords[saidPtr+look];
         saidPtr+=look+1;
         correct++;
         return{w,said,ok:true};
+      }
+      // Merged two-word match ('who ever' -> 'whoever')
+      if(saidPtr+look+1<cleanSaid.length){
+        const merged=cleanSaid[saidPtr+look]+cleanSaid[saidPtr+look+1];
+        if(merged===cw){
+          saidPtr+=look+2;
+          correct++;
+          return{w,said:saidWords[saidPtr-1],ok:true};
+        }
       }
     }
     return{w,said:null,ok:false};
@@ -443,16 +458,29 @@ function VoiceRecite({verse,onVerified}){
           </div>
           <div className="result-area">
             {result.results.map((r,i)=>(
-              <span key={i} className={r.ok?'r-correct':'r-wrong'}>{r.w} </span>
+              <span key={i}>
+                {r.ok
+                  ?<span className="r-correct">{r.w} </span>
+                  :<span className="r-wrong" title={r.said?`Heard: "${r.said}"`:'Not heard'}>{r.w} </span>
+                }
+              </span>
             ))}
           </div>
+          {result.score<100&&result.score>=70&&(
+            <p className="hint-text" style={{marginTop:8,textAlign:'center'}}>
+              Red words weren't heard clearly — recognition sometimes misses small words or splits compound words. If you said it right, trust yourself.
+            </p>
+          )}
           <div className="game-actions" style={{justifyContent:'center',marginTop:12}}>
             <button className="btn-outline btn-sm" onClick={retry}>🎤 Try Again</button>
-            {result.score>=70&&(
-              <button className="btn-gold" onClick={()=>onVerified(result.score===100?5:result.score>=90?4:3)}>
+            {result.score>=70
+              ?<button className="btn-gold" onClick={()=>onVerified(result.score===100?5:result.score>=90?4:3)}>
                 Use Voice Score (+10 XP)
               </button>
-            )}
+              :<button className="btn-outline btn-sm" onClick={()=>onVerified(3)}>
+                I said it right — claim anyway
+              </button>
+            }
           </div>
         </div>
       )}
@@ -947,7 +975,8 @@ function App(){
 
   /* ── GAME SCREEN ── */
   if(gameMode){
-    const gp={verse:activeVerse,verseRef,onComplete:handleGameComplete,onBack:()=>setGameMode(null),moveMode};
+    const gameVerse=activeVerse.trim()+(verseRef?' — '+verseRef:'');
+    const gp={verse:gameVerse,verseRef,onComplete:handleGameComplete,onBack:()=>setGameMode(null),moveMode};
     return(
       <div className="vault-wrap">
         {showManna&&<MannaModal onClose={()=>setShowManna(false)}/>}
