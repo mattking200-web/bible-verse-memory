@@ -233,7 +233,7 @@ const MANNA_Q=[
 function getRank(xp){return RANKS.find(r=>xp>=r.min&&xp<r.max)||RANKS[RANKS.length-1]}
 function getXpPct(xp){const r=getRank(xp);if(r.max===Infinity)return 100;return Math.round(((xp-r.min)/(r.max-r.min))*100)}
 function getNextRank(xp){const i=RANKS.findIndex(r=>xp>=r.min&&xp<r.max);return i<RANKS.length-1?RANKS[i+1]:null}
-function clean(w){return w.toLowerCase().replace(/[^a-z]/g,'')}
+function clean(w){return w.toLowerCase().replace(/[^a-z0-9]/g,'')}
 function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function lsGet(k){try{const v=localStorage.getItem('bmv_'+k);return v?JSON.parse(v):null;}catch{return null;}}
 function lsSet(k,v){try{localStorage.setItem('bmv_'+k,JSON.stringify(v));}catch{}}
@@ -324,26 +324,29 @@ function hasSpeechRecognition(){
   return typeof window!=='undefined'&&!!(window.SpeechRecognition||window.webkitSpeechRecognition);
 }
 function scoreTranscript(transcript,target){
-  const targetWords=target.trim().split(/\s+/);
-  const saidWords=transcript.trim().split(/\s+/).filter(Boolean);
+  // Expand number-only tokens split by colon/hyphen so '43-45' → '43 45'
+  // and '53:6' → '53 6', matching how they're naturally spoken.
+  function expandNumbers(text){
+    return text.trim().split(/\s+/).flatMap(w=>{
+      if(/^[\d:.\-–—]+$/.test(w))return w.split(/[:.\-–—]/).filter(Boolean);
+      return[w];
+    }).join(' ');
+  }
+  const targetWords=expandNumbers(target).split(/\s+/);
+  const saidWords=expandNumbers(transcript).trim().split(/\s+/).filter(Boolean);
   const cleanSaid=saidWords.map(clean);
-  // LOOKAHEAD=8 handles up to 8 filler/inserted words before a match.
-  // Two-word merge handles speech recognisers splitting compound words
-  // ('who ever' -> 'whoever', 'some one' -> 'someone', etc.).
   const LOOKAHEAD=8;
   let saidPtr=0,correct=0;
   const results=targetWords.map(w=>{
     const cw=clean(w);
     if(!cw)return{w,said:null,ok:true};
     for(let look=0;look<=LOOKAHEAD&&saidPtr+look<cleanSaid.length;look++){
-      // Single-word match
       if(cleanSaid[saidPtr+look]===cw){
         const said=saidWords[saidPtr+look];
         saidPtr+=look+1;
         correct++;
         return{w,said,ok:true};
       }
-      // Merged two-word match ('who ever' -> 'whoever')
       if(saidPtr+look+1<cleanSaid.length){
         const merged=cleanSaid[saidPtr+look]+cleanSaid[saidPtr+look+1];
         if(merged===cw){
@@ -365,11 +368,9 @@ function VoiceRecite({verse,onVerified}){
   const [result,setResult]=useState(null);
   const [errorMsg,setErrorMsg]=useState('');
   const recRef=useRef(null);
-  const stopTimerRef=useRef(null);
 
   useEffect(()=>()=>{
     recRef.current?.abort?.();
-    if(stopTimerRef.current)clearTimeout(stopTimerRef.current);
   },[]);
 
   function start(){
@@ -400,7 +401,6 @@ function VoiceRecite({verse,onVerified}){
       }
     };
     rec.onend=()=>{
-      if(stopTimerRef.current)clearTimeout(stopTimerRef.current);
       // Some browsers (notably iOS Safari) can fail to ever mark a result
       // isFinal, so finalText stays empty even though speech was captured.
       // Fall back to whatever interim transcript we last saw.
@@ -415,7 +415,6 @@ function VoiceRecite({verse,onVerified}){
     recRef.current=rec;
     setErrorMsg('');setInterim('');setResult(null);setStatus('listening');
     rec.start();
-    stopTimerRef.current=setTimeout(()=>rec.stop(),30000);
   }
   function stop(){recRef.current?.stop();}
   function retry(){setStatus('idle');setResult(null);setInterim('');}
