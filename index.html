@@ -234,6 +234,35 @@ function getRank(xp){return RANKS.find(r=>xp>=r.min&&xp<r.max)||RANKS[RANKS.leng
 function getXpPct(xp){const r=getRank(xp);if(r.max===Infinity)return 100;return Math.round(((xp-r.min)/(r.max-r.min))*100)}
 function getNextRank(xp){const i=RANKS.findIndex(r=>xp>=r.min&&xp<r.max);return i<RANKS.length-1?RANKS[i+1]:null}
 function clean(w){return w.toLowerCase().replace(/[^a-z0-9]/g,'')}
+/* Common homophones speech recognition swaps unpredictably. Each group
+   maps to its first member, so any word in a group is treated as
+   equivalent to any other — a real substitution mistake (a different
+   word entirely) still gets caught, since it won't be in these groups. */
+const HOMOPHONE_GROUPS=[
+  ['their','there','theyre'],
+  ['your','youre'],
+  ['to','too','two'],
+  ['for','four','fore'],
+  ['no','know'],
+  ['knew','new'],
+  ['right','write','rite'],
+  ['son','sun'],
+  ['made','maid'],
+  ['soul','sole'],
+  ['through','threw'],
+  ['whole','hole'],
+  ['hear','here'],
+  ['were','wear','where'],
+  ['weak','week'],
+  ['reign','rein','rain'],
+  ['heir','air'],
+  ['bread','bred'],
+  ['sea','see'],
+  ['be','bee'],
+  ['praise','prays','preys']
+];
+const HOMOPHONE_MAP=(()=>{const m={};HOMOPHONE_GROUPS.forEach(g=>{const canon=g[0];g.forEach(w=>{m[w]=canon;});});return m;})();
+function homophoneNorm(w){return HOMOPHONE_MAP[w]||w;}
 function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function lsGet(k){try{const v=localStorage.getItem('bmv_'+k);return v?JSON.parse(v):null;}catch{return null;}}
 function lsSet(k,v){try{localStorage.setItem('bmv_'+k,JSON.stringify(v));}catch{}}
@@ -335,29 +364,46 @@ function scoreTranscript(transcript,target){
   const targetWords=expandNumbers(target).split(/\s+/);
   const saidWords=expandNumbers(transcript).trim().split(/\s+/).filter(Boolean);
   const cleanSaid=saidWords.map(clean);
+  const cleanTarget=targetWords.map(clean);
+  const homoSaid=cleanSaid.map(homophoneNorm);
+  const homoTarget=cleanTarget.map(homophoneNorm);
+  // LOOKAHEAD=8 handles up to 8 filler/inserted words before a match.
+  // Speech recognition frequently merges or splits compound words
+  // differently than the source text ('who ever'/'whoever', 'a
+  // stray'/'astray', 'everyone'/'every one') — checked in both
+  // directions so either quirk is absorbed instead of marked wrong.
+  // Homophones ('their'/'there', 'to'/'too'/'two') are also treated
+  // as equivalent, since recognition can't distinguish them by sound.
   const LOOKAHEAD=8;
   let saidPtr=0,correct=0;
-  const results=targetWords.map(w=>{
-    const cw=clean(w);
-    if(!cw)return{w,said:null,ok:true};
+  let ti=0;
+  const results=[];
+  while(ti<targetWords.length){
+    const w=targetWords[ti];
+    const cw=cleanTarget[ti];
+    const hw=homoTarget[ti];
+    if(!cw){results.push({w,said:null,ok:true});ti++;continue;}
+    let matched=false;
     for(let look=0;look<=LOOKAHEAD&&saidPtr+look<cleanSaid.length;look++){
-      if(cleanSaid[saidPtr+look]===cw){
-        const said=saidWords[saidPtr+look];
-        saidPtr+=look+1;
-        correct++;
-        return{w,said,ok:true};
+      // Single-word match (direct or homophone-equivalent)
+      if(cleanSaid[saidPtr+look]===cw||homoSaid[saidPtr+look]===hw){
+        results.push({w,said:saidWords[saidPtr+look],ok:true});
+        saidPtr+=look+1;correct++;matched=true;ti++;break;
       }
-      if(saidPtr+look+1<cleanSaid.length){
-        const merged=cleanSaid[saidPtr+look]+cleanSaid[saidPtr+look+1];
-        if(merged===cw){
-          saidPtr+=look+2;
-          correct++;
-          return{w,said:saidWords[saidPtr-1],ok:true};
-        }
+      // Two said-words merge into one target word ('who'+'ever'='whoever')
+      if(saidPtr+look+1<cleanSaid.length&&cleanSaid[saidPtr+look]+cleanSaid[saidPtr+look+1]===cw){
+        results.push({w,said:saidWords[saidPtr+look]+' '+saidWords[saidPtr+look+1],ok:true});
+        saidPtr+=look+2;correct++;matched=true;ti++;break;
+      }
+      // One said-word splits into two target words ('everyone'='every'+'one')
+      if(ti+1<targetWords.length&&cleanSaid[saidPtr+look]===cw+cleanTarget[ti+1]){
+        results.push({w,said:saidWords[saidPtr+look],ok:true});
+        results.push({w:targetWords[ti+1],said:saidWords[saidPtr+look],ok:true});
+        saidPtr+=look+1;correct+=2;matched=true;ti+=2;break;
       }
     }
-    return{w,said:null,ok:false};
-  });
+    if(!matched){results.push({w,said:null,ok:false});ti++;}
+  }
   const total=targetWords.filter(w=>clean(w)).length||1;
   const score=Math.round((correct/total)*100);
   return{score,results};
