@@ -919,7 +919,7 @@ function App(){
   const rank=getRank(xp);
   const nextRank=getNextRank(xp);
   const xpPct=getXpPct(xp);
-  const today=new Date().toDateString();
+  const today=todayISO();
   const activeVerse=(showManual&&manualText)?manualText:verseText;
 
   async function fetchVerse(ref){
@@ -948,7 +948,11 @@ function App(){
   function handleGameComplete(quality=5){
     setXp(p=>p+10);
     if(lastPlay!==today){
-      setStreak(p=>p+1);
+      // Only continue the streak if the last play was exactly
+      // yesterday. Any bigger gap (a missed day, or a first-ever
+      // play) resets to 1 instead of incrementing forever.
+      const gap=/^\d{4}-\d{2}-\d{2}$/.test(lastPlay)?-daysBetween(lastPlay):Infinity;
+      setStreak(gap===1?p=>p+1:1);
       setLastPlay(today);
       setShowManna(true);
     }
